@@ -1,0 +1,6 @@
+[workspace]
+resolver = "3"
+members = [
+    "rosella_cli",
+    "rosella_lib"
+]
