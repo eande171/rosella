@@ -1,3 +1,16 @@
+use rosella::Lexer;
+
 fn main() {
-    println!("Hello, world!");
+    let mut lexer = Lexer::new(
+        r#"
+        fn add(x, y) {
+            let result = x + y;
+            result
+        }
+        "#
+    );
+
+    let tokens = lexer.tokenise();
+
+    println!("{:?}", tokens);
 }
