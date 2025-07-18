@@ -5,12 +5,12 @@ fn main() {
         r#"
         fn add(x, y) {
             let result = x + y;
-            result
+            |> "echo" result;
         }
         "#
     );
 
-    let tokens = lexer.tokenise();
+    let tokens = lexer.tokenise().unwrap();
 
     println!("{:?}", tokens);
 }
