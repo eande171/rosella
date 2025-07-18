@@ -76,6 +76,18 @@ impl Parser {
         }
     }
 
+    fn peek_previous(&self) -> &Token {
+        if self.position > 0 {
+            match self.tokens.get(self.position - 1) {
+                Some(token) => token,
+                None => &Token::EOF
+            }
+        }
+        else {
+            &Token::EOF
+        }
+    }
+
     fn advance(&mut self) {
         if self.position < self.tokens.len(){
            self.position += 1;
@@ -89,7 +101,6 @@ impl Parser {
         }
         else {
             Err(RosellaError::UnexpectedToken(expected.to_owned(), self.current_token().to_owned()))
-            //lkpanic!("Expected: {:?}, found: {:?}", expected, self.current_token())
         }
     }
 
@@ -97,13 +108,13 @@ impl Parser {
         let mut statements: Vec<Stmt> = Vec::new();
 
         while self.current_token() != &Token::EOF {
-            
+            statements.push(self.parse_stmt()?);
         }
 
         Ok(statements)
     }
 
-    pub fn parse_stmt(&mut self) -> Result<Stmt, RosellaError> {
+    fn parse_stmt(&mut self) -> Result<Stmt, RosellaError> {
         match self.current_token() {
             Token::Let => Ok(self.parse_let_stmt()?),
             _ => {
@@ -114,6 +125,94 @@ impl Parser {
     }
 
     fn parse_let_stmt(&mut self) -> Result<Stmt, RosellaError> {
-        Ok(Stmt::Expression(Expr::Number(0.0)))
+        self.expect_token(&Token::Let)?;
+
+        let name = match self.current_token() {
+            Token::Identifier(name) => name.clone(),
+            _ => return Err(RosellaError::ParseError("Expected identifer after 'let'".to_string())),
+        };
+        self.advance();
+
+        self.expect_token(&Token::Assign)?;
+        let value = self.parse_expression()?;
+        self.expect_token(&Token::Semicolon)?;
+        Ok(Stmt::Let { name, value })
+    }
+
+    fn parse_expression(&mut self) -> Result<Expr, RosellaError> {
+        self.binary_expression(&[
+            &[Token::Equal, Token::NotEqual],
+            &[Token::GreaterThan, Token::GreaterThanEq, Token::LessThan, Token::LessThanEq],
+            &[Token::Plus, Token::Minus],
+            &[Token::Multiply, Token::Divide],
+        ], 0)
+    }
+
+    fn binary_expression(&mut self, precedence: &[&[Token]], level: usize) -> Result<Expr, RosellaError> {
+        if level >= precedence.len() {
+            return self.primary();
+        }
+
+        let mut expr = self.binary_expression(precedence, level + 1)?;
+        let current_operators = precedence[level];
+
+        loop {
+            if current_operators.contains(self.current_token()) {
+                self.advance();
+                let operator = self.token_to_binary_op(self.peek_previous().clone())?;
+
+                let right = self.binary_expression(precedence, level + 1)?;
+
+                expr = Expr::Binary { left: Box::new(expr), operator, right: Box::new(right) }
+            }
+            else {
+                break;
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn token_to_binary_op(&self, token: Token) -> Result<BinaryOp, RosellaError> {
+        match token {
+            Token::Equal => Ok(BinaryOp::Equal),
+            Token::NotEqual => Ok(BinaryOp::NotEqual),
+            Token::GreaterThan => Ok(BinaryOp::GreaterThan),
+            Token::GreaterThanEq => Ok(BinaryOp::GreaterThanEq),
+            Token::LessThan => Ok(BinaryOp::LessThan),
+            Token::LessThanEq => Ok(BinaryOp::LessThanEq),
+            Token::Plus => Ok(BinaryOp::Add),
+            Token::Minus => Ok(BinaryOp::Subtract),
+            Token::Multiply => Ok(BinaryOp::Multiply),
+            Token::Divide => Ok(BinaryOp::Divide),
+            _ => Err(RosellaError::ParseError(format!("{:?} is not a valid binary operator", token)))
+        }
+    }
+
+    fn primary(&mut self) -> Result<Expr, RosellaError> {
+        match self.current_token() {
+            Token::Number(n) => {
+                let num = *n;
+                self.advance();
+                Ok(Expr::Number(num))
+            }
+            Token::String(s) => {
+                let string = s.clone();
+                self.advance();
+                Ok(Expr::String(string))
+            }
+            Token::Identifier(name) => {
+                let variable_name = name.clone();
+                self.advance();
+                Ok(Expr::Identifier(variable_name))
+            }
+            Token::LParen => {
+                self.advance();
+                let expr = self.parse_expression()?;
+                self.expect_token(&Token::RParen)?;
+                Ok(expr)
+            }
+            _ => Err(RosellaError::ParseError(format!("Unexpected token: {:?}", self.current_token())))
+        }
     }
 }
