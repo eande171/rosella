@@ -118,6 +118,7 @@ impl Parser {
         match self.current_token() {
             Token::Function => Ok(self.parse_fn_stmt()?),
             Token::Let => Ok(self.parse_let_stmt()?),
+            Token::If => Ok(self.parse_if_stmt()?),
             _ => {
                 let expr = self.parse_expression()?;
                 Ok(Stmt::Expression(expr))
@@ -171,6 +172,43 @@ impl Parser {
         let value = self.parse_expression()?;
         self.expect_token(&Token::Semicolon)?;
         Ok(Stmt::Let { name, value })
+    }
+
+    fn parse_if_stmt(&mut self) -> Result<Stmt, RosellaError> {
+        self.expect_token(&Token::If)?;
+
+        self.expect_token(&Token::LParen)?;
+        let condition = self.parse_expression()?;
+        self.expect_token(&Token::RParen)?;
+
+        self.expect_token(&Token::LBrace)?;
+
+        let mut then_branch: Vec<Stmt> = Vec::new();
+        while self.current_token() != &Token::RBrace {
+            then_branch.push(self.parse_stmt()?);
+        }
+        self.expect_token(&Token::RBrace)?;
+
+        let else_branch = if self.current_token() == &Token::Else {
+            self.advance();
+            //Some(self.parse_else_branch()?)
+        
+            if self.current_token() == &Token::If {
+                Some(vec![self.parse_if_stmt()?])
+            } else {
+                self.expect_token(&Token::LBrace)?;
+                let mut else_branch: Vec<Stmt> = Vec::new();
+                while self.current_token() != &Token::RBrace {
+                    else_branch.push(self.parse_stmt()?);
+                }
+                self.expect_token(&Token::RBrace)?;
+                Some(else_branch)
+            }
+        } else {
+            None
+        };
+
+        Ok(Stmt::If { condition, then_branch, else_branch })
     }
 
     fn parse_expression(&mut self) -> Result<Expr, RosellaError> {

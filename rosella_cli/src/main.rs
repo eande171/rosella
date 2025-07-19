@@ -24,8 +24,15 @@ fn main() {
             let result = x + y;
         }
 
-        add(1, 2);
-        add(3, 4);
+        if (x > 0) {
+            add(1, 2);
+        }
+        else if (x < 0) {
+            add(2, 3);
+        }
+        else {
+            add(3, 4);
+        }
         "#
     );
 
