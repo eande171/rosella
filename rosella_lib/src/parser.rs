@@ -120,6 +120,8 @@ impl Parser {
             Token::Let => Ok(self.parse_let_stmt()?),
             Token::If => Ok(self.parse_if_stmt()?),
             Token::With => Ok(self.parse_with_stmt()?),
+            Token::While => Ok(self.parse_while_stmt()?),
+            Token::RawInstruction => Ok(self.parse_raw_stmt()?),
             _ => {
                 let expr = self.parse_expression()?;
                 Ok(Stmt::Expression(expr))
@@ -230,6 +232,38 @@ impl Parser {
         self.expect_token(&Token::RBrace)?;
 
         Ok(Stmt::With { os, body })
+    }
+
+    fn parse_while_stmt(&mut self) -> Result<Stmt, RosellaError> {
+        self.expect_token(&Token::While)?;
+
+        self.expect_token(&Token::LParen)?;
+        let condition = self.parse_expression()?;
+        self.expect_token(&Token::RParen)?;
+
+        self.expect_token(&Token::LBrace)?;
+
+        let mut body: Vec<Stmt> = Vec::new();
+        while self.current_token() != &Token::RBrace {
+            body.push(self.parse_stmt()?);
+        }
+        self.expect_token(&Token::RBrace)?;
+
+        Ok(Stmt::While { condition, body })
+    }
+
+    fn parse_raw_stmt(&mut self) -> Result<Stmt, RosellaError> {
+        self.expect_token(&Token::RawInstruction)?;
+
+        let mut instructions: Vec<Expr> = Vec::new();
+
+        while self.current_token() != &Token::Semicolon && self.current_token() != &Token::EOF {
+            instructions.push(self.parse_expression()?);
+        }
+
+        self.expect_token(&Token::Semicolon)?;
+
+        Ok(Stmt::RawInstruction(instructions))
     }
 
     fn parse_expression(&mut self) -> Result<Expr, RosellaError> {
