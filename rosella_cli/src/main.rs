@@ -43,6 +43,9 @@ fn main() {
         with macos {
             print("Using MacOS");
         }
+
+        |> "echo Hello, World!";
+        |> "echo This is a test" variable "-t 100";
         "#
     );
 
