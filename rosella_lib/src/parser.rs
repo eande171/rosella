@@ -119,6 +119,7 @@ impl Parser {
             Token::Function => Ok(self.parse_fn_stmt()?),
             Token::Let => Ok(self.parse_let_stmt()?),
             Token::If => Ok(self.parse_if_stmt()?),
+            Token::With => Ok(self.parse_with_stmt()?),
             _ => {
                 let expr = self.parse_expression()?;
                 Ok(Stmt::Expression(expr))
@@ -209,6 +210,26 @@ impl Parser {
         };
 
         Ok(Stmt::If { condition, then_branch, else_branch })
+    }
+
+    fn parse_with_stmt(&mut self) -> Result<Stmt, RosellaError> {
+        self.expect_token(&Token::With)?;
+
+        let os = match self.current_token() {
+            Token::Identifier(os) => os.clone(),
+            _ => return Err(RosellaError::ParseError("Expected identifier after 'with'".to_string())),
+        };
+        self.advance();
+
+        self.expect_token(&Token::LBrace)?;
+
+        let mut body: Vec<Stmt> = Vec::new();
+        while self.current_token() != &Token::RBrace {
+            body.push(self.parse_stmt()?);
+        }
+        self.expect_token(&Token::RBrace)?;
+
+        Ok(Stmt::With { os, body })
     }
 
     fn parse_expression(&mut self) -> Result<Expr, RosellaError> {

@@ -33,6 +33,16 @@ fn main() {
         else {
             add(3, 4);
         }
+
+        with windows {
+            print("Using Windows");
+        }
+        with linux {
+            print("Using Linux");
+        }
+        with macos {
+            print("Using MacOS");
+        }
         "#
     );
 
