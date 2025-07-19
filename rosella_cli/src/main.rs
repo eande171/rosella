@@ -11,10 +11,21 @@ fn main() {
         "#
     );*/
 
-    let mut lexer = Lexer::new(
+    /*let mut lexer = Lexer::new(
   r#"
         let result = x + y;
         let string = "this is a string";
+        "#
+    );*/
+
+    let mut lexer = Lexer::new(
+        r#"
+        fn add(x, y) {
+            let result = x + y;
+        }
+
+        add(1, 2);
+        add(3, 4);
         "#
     );
 

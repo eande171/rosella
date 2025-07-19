@@ -53,7 +53,7 @@ pub enum Stmt {
     },
     Function {
         name: String,
-        arguments: Vec<Expr>,
+        arguments: Option<Vec<Expr>>,
         body: Vec<Stmt>,
     },
     RawInstruction(Vec<Expr>)
@@ -116,12 +116,46 @@ impl Parser {
 
     fn parse_stmt(&mut self) -> Result<Stmt, RosellaError> {
         match self.current_token() {
+            Token::Function => Ok(self.parse_fn_stmt()?),
             Token::Let => Ok(self.parse_let_stmt()?),
             _ => {
-                Err(RosellaError::InvalidStatement(self.current_token().to_owned()))
+                let expr = self.parse_expression()?;
+                Ok(Stmt::Expression(expr))
+                
+                //Err(RosellaError::InvalidStatement(self.current_token().to_owned()))
                 //panic!("Unhandled Statement: {:?}", self.current_token());
             }
         }
+    }
+
+    fn parse_fn_stmt(&mut self) -> Result<Stmt, RosellaError> {
+        self.expect_token(&Token::Function)?;
+
+        let name = match self.current_token() {
+            Token::Identifier(name) => name.clone(),
+            _ => return Err(RosellaError::ParseError("Expected identifer after 'fn'".to_string())),
+        };
+        self.advance();
+
+        self.expect_token(&Token::LParen)?;
+        
+        let arguments = self.parse_arguments()?;
+
+        self.expect_token(&Token::LBrace)?;
+
+        let mut body: Vec<Stmt> = Vec::new();
+
+        while self.current_token() != &Token::RBrace {
+            body.push(self.parse_stmt()?);
+        }
+
+        self.expect_token(&Token::RBrace)?;
+
+        Ok(Stmt::Function {
+            name,
+            arguments: if arguments.is_empty() { None } else { Some(arguments) },
+            body,
+        })
     }
 
     fn parse_let_stmt(&mut self) -> Result<Stmt, RosellaError> {
@@ -190,7 +224,7 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expr, RosellaError> {
-        match self.current_token() {
+        let primary = match self.current_token() {
             Token::Number(n) => {
                 let num = *n;
                 self.advance();
@@ -213,6 +247,55 @@ impl Parser {
                 Ok(expr)
             }
             _ => Err(RosellaError::ParseError(format!("Unexpected token: {:?}", self.current_token())))
+        };
+
+        if let Token::Identifier(_) = self.peek_previous() {
+            if let Token::LParen = self.current_token() {
+                let name = match self.peek_previous() {
+                    Token::Identifier(name) => name.clone(),
+                    _ => return Err(RosellaError::ParseError("Expected identifer after 'fn'".to_string())),
+                };
+
+                self.advance();
+
+                let args = self.parse_arguments()?;
+
+                self.expect_token(&Token::Semicolon)?;
+                
+                Ok(Expr::Call { name, args })
+            }
+            else {
+                primary
+            }
         }
+        else {
+            primary
+        }
+    }
+
+    fn parse_arguments(&mut self) -> Result<Vec<Expr>, RosellaError> {
+        let mut arguments = Vec::new();
+
+        if self.current_token() == &Token::RParen {
+            self.advance();
+            return Ok(arguments);
+        }
+
+        loop {
+            arguments.push(self.parse_expression()?);
+
+            match self.current_token() {
+                &Token::Comma => {
+                    self.advance();
+                },
+                &Token::RParen => {
+                    self.advance();
+                    break;
+                },
+                _ => return Err(RosellaError::ParseError("Expected ',' or ')' after argument".to_string()))
+            }
+        }
+
+        Ok(arguments)
     }
 }
