@@ -24,10 +24,10 @@ fn main() {
             let result = x + y;
         }
 
-        if (x > 0) {
+        if number(x > 0) {
             add(1, 2);
         }
-        else if (x < 0) {
+        else if number(x < 0) {
             add(2, 3);
         }
         else {

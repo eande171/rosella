@@ -9,6 +9,7 @@ pub enum RosellaError {
     InvalidStatement(Token),
     UnexpectedToken(Token, Token),
     ParseError(String),
+    CompilerError(String),
 }
 
 impl fmt::Display for RosellaError {
@@ -18,7 +19,8 @@ impl fmt::Display for RosellaError {
             RosellaError::InvalidToken(token) => write!(f, "Input does not match a valid token: {:?}", token),
             RosellaError::InvalidStatement(statement) => write!(f, "Unhandled Statement: {:?}", statement),
             RosellaError::UnexpectedToken(expected_token, found_token) => write!(f, "Expected: {:?}, found: {:?}", expected_token, found_token),
-            RosellaError::ParseError(msg) => write!(f, "Error Occurred during Parsing: {}", msg)
+            RosellaError::ParseError(msg) => write!(f, "Error Occurred during Parsing: {}", msg),
+            RosellaError::CompilerError(msg) => write!(f, "Error Occurred during Compilation: {}", msg),
         }
     }
 }

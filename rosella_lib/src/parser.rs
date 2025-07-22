@@ -39,6 +39,7 @@ pub enum Stmt {
         value: Expr,
     },
     If {
+        condition_type: String,
         condition: Expr,
         then_branch: Vec<Stmt>,
         else_branch: Option<Vec<Stmt>>
@@ -48,6 +49,7 @@ pub enum Stmt {
         body: Vec<Stmt>,
     },
     While { 
+        condition_type: String,
         condition: Expr,
         body: Vec<Stmt>,
     },
@@ -180,6 +182,12 @@ impl Parser {
     fn parse_if_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::If)?;
 
+        let condition_type = match self.current_token() {
+            Token::Identifier(condition_type) => condition_type.clone(),
+            _ => return Err(RosellaError::ParseError("Expected identifer (for comparison type) after 'if'".to_string())),
+        };
+        self.advance();
+
         self.expect_token(&Token::LParen)?;
         let condition = self.parse_expression()?;
         self.expect_token(&Token::RParen)?;
@@ -211,7 +219,7 @@ impl Parser {
             None
         };
 
-        Ok(Stmt::If { condition, then_branch, else_branch })
+        Ok(Stmt::If { condition_type, condition, then_branch, else_branch })
     }
 
     fn parse_with_stmt(&mut self) -> Result<Stmt, RosellaError> {
@@ -237,6 +245,12 @@ impl Parser {
     fn parse_while_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::While)?;
 
+        let condition_type = match self.current_token() {
+            Token::Identifier(condition_type) => condition_type.clone(),
+            _ => return Err(RosellaError::ParseError("Expected identifer (for comparison type) after 'with'".to_string())),
+        };
+        self.advance();
+
         self.expect_token(&Token::LParen)?;
         let condition = self.parse_expression()?;
         self.expect_token(&Token::RParen)?;
@@ -249,7 +263,7 @@ impl Parser {
         }
         self.expect_token(&Token::RBrace)?;
 
-        Ok(Stmt::While { condition, body })
+        Ok(Stmt::While { condition_type, condition, body })
     }
 
     fn parse_raw_stmt(&mut self) -> Result<Stmt, RosellaError> {
