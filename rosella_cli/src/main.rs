@@ -85,6 +85,8 @@ fn main() {
                 let int result = x + y;
             }
         }
+
+        |> echo "Hello World";
         "#
     );
 
