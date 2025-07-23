@@ -138,16 +138,10 @@ impl Parser {
     fn parse_fn_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::Function)?;
 
-        let name = match self.current_token() {
-            Token::Identifier(name) => name.clone(),
-            _ => return Err(RosellaError::ParseError("Expected identifer after 'fn'".to_string())),
-        };
-        self.advance();
+        let name = self.parse_identifier("fn", "function name")?;
 
         self.expect_token(&Token::LParen)?;
-        
         let arguments = self.parse_arguments()?;
-
         self.expect_token(&Token::LBrace)?;
 
         let mut body: Vec<Stmt> = Vec::new();
@@ -168,17 +162,9 @@ impl Parser {
     fn parse_let_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::Let)?;
 
-        let variable_type = match self.current_token() {
-            Token::Identifier(variable_type) => variable_type.clone(),
-            _ => return Err(RosellaError::ParseError("Expected identifer (for variable type) after 'let'".to_string())),
-        };
-        self.advance();
+        let variable_type = self.parse_identifier("let", "variable type")?;
 
-        let name = match self.current_token() {
-            Token::Identifier(name) => name.clone(),
-            _ => return Err(RosellaError::ParseError("Expected identifer after 'let'".to_string())),
-        };
-        self.advance();
+        let name = self.parse_identifier("let", "variable name")?;
 
         self.expect_token(&Token::Assign)?;
         let value = self.parse_expression()?;
@@ -189,11 +175,7 @@ impl Parser {
     fn parse_if_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::If)?;
 
-        let condition_type = match self.current_token() {
-            Token::Identifier(condition_type) => condition_type.clone(),
-            _ => return Err(RosellaError::ParseError("Expected identifer (for comparison type) after 'if'".to_string())),
-        };
-        self.advance();
+        let condition_type = self.parse_identifier("if", "for comparion type")?;
 
         self.expect_token(&Token::LParen)?;
         let condition = self.parse_expression()?;
@@ -209,8 +191,6 @@ impl Parser {
 
         let else_branch = if self.current_token() == &Token::Else {
             self.advance();
-            //Some(self.parse_else_branch()?)
-        
             if self.current_token() == &Token::If {
                 Some(vec![self.parse_if_stmt()?])
             } else {
@@ -232,11 +212,7 @@ impl Parser {
     fn parse_with_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::With)?;
 
-        let os = match self.current_token() {
-            Token::Identifier(os) => os.clone(),
-            _ => return Err(RosellaError::ParseError("Expected identifier after 'with'".to_string())),
-        };
-        self.advance();
+        let os = self.parse_identifier("with", "OS type")?;
 
         self.expect_token(&Token::LBrace)?;
 
@@ -252,11 +228,7 @@ impl Parser {
     fn parse_while_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::While)?;
 
-        let condition_type = match self.current_token() {
-            Token::Identifier(condition_type) => condition_type.clone(),
-            _ => return Err(RosellaError::ParseError("Expected identifer (for comparison type) after 'with'".to_string())),
-        };
-        self.advance();
+        let condition_type = self.parse_identifier("while", "for comparison type")?;
 
         self.expect_token(&Token::LParen)?;
         let condition = self.parse_expression()?;
@@ -411,5 +383,15 @@ impl Parser {
         }
 
         Ok(arguments)
+    }
+
+    fn parse_identifier(&mut self, context: &str, reason: &str) -> Result<String, RosellaError> {
+        let value = match self.current_token() {
+            Token::Identifier(value) => Ok(value.clone()),
+            _ => return Err(RosellaError::ParseError(format!("Expected identifer ({}) after '{}'", reason, context))),
+        };
+        self.advance();
+
+        value
     }
 }

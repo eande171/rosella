@@ -12,8 +12,7 @@ pub struct Compiler {
 
 pub enum OS {
     Windows,
-    Linux,
-    MacOS,
+    Linux
 }
 
 #[derive(Debug, Clone, Copy)]
