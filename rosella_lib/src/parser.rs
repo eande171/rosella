@@ -35,6 +35,7 @@ pub enum BinaryOp {
 pub enum Stmt {
     Expression(Expr),
     Let {
+        variable_type: String,
         name: String,
         value: Expr,
     },
@@ -167,6 +168,12 @@ impl Parser {
     fn parse_let_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::Let)?;
 
+        let variable_type = match self.current_token() {
+            Token::Identifier(variable_type) => variable_type.clone(),
+            _ => return Err(RosellaError::ParseError("Expected identifer (for variable type) after 'let'".to_string())),
+        };
+        self.advance();
+
         let name = match self.current_token() {
             Token::Identifier(name) => name.clone(),
             _ => return Err(RosellaError::ParseError("Expected identifer after 'let'".to_string())),
@@ -176,7 +183,7 @@ impl Parser {
         self.expect_token(&Token::Assign)?;
         let value = self.parse_expression()?;
         self.expect_token(&Token::Semicolon)?;
-        Ok(Stmt::Let { name, value })
+        Ok(Stmt::Let { variable_type, name, value })
     }
 
     fn parse_if_stmt(&mut self) -> Result<Stmt, RosellaError> {
