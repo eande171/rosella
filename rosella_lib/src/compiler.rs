@@ -53,8 +53,16 @@ impl Compiler {
                 => Ok(self.compile_while_stmt(condition, body, statement)?),
             Stmt::Function {name, arguments, body} 
                 => Ok(self.compile_function(name, arguments, body)?),
+            Stmt::Expression(expr) => {
+                let (name, args) = match expr {
+                    Expr::Call { name, args} => (name, args),
+                    _ => return Err(RosellaError::CompilerError("Expression is not a function call".to_string())),
+                };
+
+                Ok(self.compile_function_call(name, args)?)
+            }
             Stmt::RawInstruction(instructions) => Ok(self.compile_raw_instruction(instructions)?),
-            _ => unimplemented!("Statement type is not implemented for compilation: {:?}", statement),
+            //_ => unimplemented!("Statement type is not implemented for compilation: {:?}", statement),
         }
     }
 
@@ -155,9 +163,9 @@ impl Compiler {
         let mut output = String::new();
 
         match self.shell {
-            Shell::Batch => unimplemented!("Batch shell compilation for functions not implemented yet"),
+            Shell::Batch => todo!("Batch shell compilation for functions not implemented yet"),
             Shell::Bash => {
-                output.push_str(format!("function {}() {{\n", name).as_str());
+                output.push_str(format!("{}() {{\n", name).as_str());
                 if let Some(arguments) = args {
                     for (index, arg) in arguments.iter().enumerate() {
                         let arg_str = match arg {
@@ -176,6 +184,32 @@ impl Compiler {
 
         Ok(output)
     }
+
+    fn compile_function_call(&self, name: &String, args: &Vec<Expr>) -> Result<String, RosellaError> {
+        let mut output = String::new();
+
+        match self.shell {
+            Shell::Batch => todo!(),
+            Shell::Bash => {
+                output.push_str(format!("{} ", name).as_str());
+
+                if !args.is_empty() {
+                    for arg in args {
+                        match arg {
+                            Expr::Identifier(id) => output.push_str(format!("\"${}\" ", id).as_str()),
+                            Expr::String(s) => output.push_str(format!("\"{}\" ", s).as_str()),
+                            Expr::Number(n) => output.push_str(format!("{} ", n).as_str()),
+                            _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type in function call: {:?}", arg))),
+                        }
+                    }
+                }
+            }
+        }
+
+        output.push('\n');
+
+        Ok(output)
+    } 
 
     fn compile_raw_instruction(&self, instructions: &Vec<Expr>) -> Result<String, RosellaError> {
         let mut output = String::new();
