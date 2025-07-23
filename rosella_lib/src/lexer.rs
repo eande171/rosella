@@ -40,7 +40,7 @@ pub enum Token {
     LBraceSquare,           // [
     RBraceSquare,           // ]
     
-    Escape,                 // \ (used for escaping characters)
+    //Escape,                 // \ (used for escaping characters)
     Comma,                  // ,
     Semicolon,              // ;
 
@@ -147,10 +147,10 @@ impl Lexer {
         self.advance();
 
         match current_char {
-            Some('\\') => {
+            /*Some('\\') => {
                 self.advance();
                 Ok(Token::Escape)
-            },
+            },*/
             Some('=') => {
                 if self.current_character == Some('=') {
                     self.advance();
