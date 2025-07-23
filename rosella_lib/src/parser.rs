@@ -31,6 +31,12 @@ pub enum BinaryOp {
     GreaterThanEq
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OS {
+    Windows,
+    Linux
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
     Expression(Expr),
@@ -46,7 +52,7 @@ pub enum Stmt {
         else_branch: Option<Vec<Stmt>>
     },
     With {
-        os: String,
+        os: OS,
         body: Vec<Stmt>,
     },
     While { 
@@ -212,7 +218,11 @@ impl Parser {
     fn parse_with_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::With)?;
 
-        let os = self.parse_identifier("with", "OS type")?;
+        let os = match self.parse_identifier("with", "OS type")?.as_str() {
+            "windows" => OS::Windows,
+            "linux" => OS::Linux,
+            _ => return Err(RosellaError::ParseError("Invalid OS type in 'with' statement".to_string())),
+        };
 
         self.expect_token(&Token::LBrace)?;
 
