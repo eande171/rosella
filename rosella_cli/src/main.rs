@@ -84,6 +84,8 @@ fn main() {
             fn add(x, y) {
                 let int result = x + y;
             }
+
+            add(1, 2);
         }
 
         |> echo "Hello World";
