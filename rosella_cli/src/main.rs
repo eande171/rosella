@@ -79,7 +79,11 @@ fn main() {
         with linux {
             while int(x < 100) {
                 let int x = x + 1;
-            }    
+            }
+
+            fn add(x, y) {
+                let int result = x + y;
+            }
         }
         "#
     );

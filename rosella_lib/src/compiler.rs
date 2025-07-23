@@ -51,6 +51,8 @@ impl Compiler {
             Stmt::With {os, body} => Ok(self.compile_with_stmt(*os, body)?), 
             Stmt::While {condition, body, ..} 
                 => Ok(self.compile_while_stmt(condition, body, statement)?),
+            Stmt::Function {name, arguments, body} 
+                => Ok(self.compile_function(name, arguments, body)?),
             _ => unimplemented!("Statement type is not implemented for compilation: {:?}", statement),
         }
     }
@@ -142,6 +144,32 @@ impl Compiler {
                     output.push_str(&self.compile_statement(stmt)?);
                 }
                 output.push_str("done\n");
+            }
+        }
+
+        Ok(output)
+    }
+
+    fn compile_function(&self, name: &str, args: &Option<Vec<Expr>>, body: &Vec<Stmt>) -> Result<String, RosellaError> {
+        let mut output = String::new();
+
+        match self.shell {
+            Shell::Batch => unimplemented!("Batch shell compilation for functions not implemented yet"),
+            Shell::Bash => {
+                output.push_str(format!("function {}() {{\n", name).as_str());
+                if let Some(arguments) = args {
+                    for (index, arg) in arguments.iter().enumerate() {
+                        let arg_str = match arg {
+                            Expr::Identifier(id) => id.clone(),
+                            _ => return Err(RosellaError::CompilerError("Function arguments must be identifiers".to_string())),
+                        };
+                        output.push_str(format!("local {}=${}\n", arg_str, index+1).as_str());
+                    }
+                }
+                for stmt in body {
+                    output.push_str(&self.compile_statement(stmt)?);
+                }
+                output.push_str("}\n");
             }
         }
 
