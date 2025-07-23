@@ -101,6 +101,10 @@ impl Parser {
         if self.position < self.tokens.len(){
            self.position += 1;
         }
+        
+        if self.current_token() == &Token::Escape {
+            self.position += 1;
+        }
     }
 
     fn expect_token(&mut self, expected: &Token) -> Result<(), RosellaError> {

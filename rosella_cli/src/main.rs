@@ -53,42 +53,22 @@ fn main() {
     );*/
     let mut lexer = Lexer::new(
         r#"
-        let int x = 10;
-        let int y = 20;
-
-        let int result = x + y;
-        let str string = "this is a string";
-
-        let str appended_string = string + string2;
-
-        with windows {
-            if int(x > 0) {
-                let int x = 10;
-                let int y = 20;
-            }
-            else if int(x < 0) {
-                let int result = x + y;
-                let str string = "this is a string";
-            }
-            else {
-                let str string2 = "this is another string";
-                let str appended_string = string + string2;
-            }
+        fn add(x, y) {
+            let int result = x + y;
+            |> echo "$x + $y = $result";
         }
 
-        with linux {
-            while int(x < 100) {
-                let int x = x + 1;
-            }
+        add(1, 2);
+        add(3, 4);
+        add(5, 6);
 
-            fn add(x, y) {
-                let int result = x + y;
-            }
+        let int x = 0;
 
-            add(1, 2);
+        while int(x < 100) {
+            |> echo "Current value of x: $x"\; " and this is a test";
+            let int x = x + 1;
         }
 
-        |> echo "Hello World";
         "#
     );
 
