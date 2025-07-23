@@ -5,3 +5,4 @@ mod compiler;
 
 pub use lexer::Lexer;
 pub use parser::Parser;
+pub use compiler::{Compiler, OS, Shell};
