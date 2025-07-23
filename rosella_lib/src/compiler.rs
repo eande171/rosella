@@ -62,7 +62,6 @@ impl Compiler {
                 Ok(self.compile_function_call(name, args)?)
             }
             Stmt::RawInstruction(instructions) => Ok(self.compile_raw_instruction(instructions)?),
-            //_ => unimplemented!("Statement type is not implemented for compilation: {:?}", statement),
         }
     }
 
@@ -255,7 +254,7 @@ impl Compiler {
                     (Shell::Bash, "int") => {
                         match operator {
                             BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide => {
-                                return Ok(format!("(({} {} {}))", left_str, operator_str, right_str));
+                                return Ok(format!("$(({} {} {}))", left_str, operator_str, right_str));
                             },
                             _ => return Ok(format!("{} {} {}", left_str, operator_str, right_str))
                         }
