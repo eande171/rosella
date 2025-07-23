@@ -53,6 +53,7 @@ impl Compiler {
                 => Ok(self.compile_while_stmt(condition, body, statement)?),
             Stmt::Function {name, arguments, body} 
                 => Ok(self.compile_function(name, arguments, body)?),
+            Stmt::RawInstruction(instructions) => Ok(self.compile_raw_instruction(instructions)?),
             _ => unimplemented!("Statement type is not implemented for compilation: {:?}", statement),
         }
     }
@@ -172,6 +173,29 @@ impl Compiler {
                 output.push_str("}\n");
             }
         }
+
+        Ok(output)
+    }
+
+    fn compile_raw_instruction(&self, instructions: &Vec<Expr>) -> Result<String, RosellaError> {
+        let mut output = String::new();
+
+        for instruction in instructions {
+            match instruction {
+                Expr::String(s) => output.push_str(format!("\"{}\" ", s).as_str()),
+                Expr::Identifier(s) => output.push_str(format!("{} ", s).as_str()),
+                Expr::Binary { left, operator, right } => {
+                    let left_str = self.compile_expr(left, self.current_statement())?;
+                    let operator_str = self.format_operator(*operator, self.current_statement())?;
+                    let right_str = self.compile_expr(right, self.current_statement())?;
+                    output.push_str(format!("{} {} {} ", left_str, operator_str, right_str).as_str());
+                },
+                Expr::Number(n) => output.push_str(format!("{} ", n).as_str()),
+                _ => return Err(RosellaError::CompilerError(format!("Unsupported raw instruction: {:?}", instruction))),
+            }
+        }
+
+        output.push('\n');
 
         Ok(output)
     }
