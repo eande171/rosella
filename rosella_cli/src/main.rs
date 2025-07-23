@@ -1,5 +1,8 @@
 use rosella::Lexer;
 use rosella::Parser;
+use rosella::Compiler;
+use rosella::Shell;
+use rosella::OS;
 
 fn main() {
     /*let mut lexer = Lexer::new(
@@ -18,16 +21,16 @@ fn main() {
         "#
     );*/
 
-    let mut lexer = Lexer::new(
+    /*let mut lexer = Lexer::new(
         r#"
         fn add(x, y) {
             let result = x + y;
         }
 
-        if (x > 0) {
+        if int(x > 0) {
             add(1, 2);
         }
-        else if (x < 0) {
+        else if int(x < 0) {
             add(2, 3);
         }
         else {
@@ -47,6 +50,13 @@ fn main() {
         |> "echo Hello, World!";
         |> "echo This is a test" variable "-t 100";
         "#
+    );*/
+    let mut lexer = Lexer::new(
+        r#"
+        let x = 10;
+        let y = 20;
+        let result = x + y;
+        "#
     );
 
     let tokens = lexer.tokenise().unwrap();
@@ -61,4 +71,12 @@ fn main() {
     };
 
     println!("AST: {:?}", ast);
+
+    let output = match Compiler::new(ast, OS::Linux, Shell::Bash)
+        .compile() {
+            Ok(result) => result,
+            Err(e) => panic!("{}", e)
+        };
+
+    println!("Compiled Output:\n{}", output);
 }
