@@ -1,6 +1,7 @@
 use super::parser::BinaryOp;
 use super::parser::Expr;
 use super::parser::Stmt;
+use super::parser::OS;
 use super::error::RosellaError;
 
 pub struct Compiler {
@@ -8,11 +9,6 @@ pub struct Compiler {
     position: usize,
     os: OS,
     shell: Shell,
-}
-
-pub enum OS {
-    Windows,
-    Linux
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -51,8 +47,11 @@ impl Compiler {
         match statement {
             Stmt::Let {name, value, ..} => Ok(self.compile_let_stmt(name, value, statement)?),
             Stmt::If {condition, then_branch, else_branch, .. } 
-                => Ok(self.compile_if_stmt(condition, then_branch, else_branch.as_ref(), statement)?), 
-            _ => unimplemented!()
+                => Ok(self.compile_if_stmt(condition, then_branch, else_branch.as_ref(), statement)?),
+            Stmt::With {os, body} => Ok(self.compile_with_stmt(*os, body)?), 
+            Stmt::While {condition, body, ..} 
+                => Ok(self.compile_while_stmt(condition, body, statement)?),
+            _ => unimplemented!("Statement type is not implemented for compilation: {:?}", statement),
         }
     }
 
@@ -99,6 +98,50 @@ impl Compiler {
                     }
                 }
                 output.push_str("fi\n");
+            }
+        }
+
+        Ok(output)
+    }
+
+    fn compile_with_stmt(&self, os: OS, body: &Vec<Stmt>) -> Result<String, RosellaError> {
+        let mut output = String::new();
+
+        match (self.os, os) {
+            (OS::Windows, OS::Windows) => {
+                for stmt in body {
+                    output.push_str(&self.compile_statement(stmt)?);
+                }
+            },
+            (OS::Linux, OS::Linux) => {
+                for stmt in body {
+                    output.push_str(&self.compile_statement(stmt)?);
+                }
+            }
+            _ => {}
+        }
+
+        Ok(output)
+    }
+
+    fn compile_while_stmt(&self, condition: &Expr, body: &Vec<Stmt>, parent_statement: &Stmt) -> Result<String, RosellaError> {
+        let condition_str = self.compile_expr(condition, parent_statement)?;
+        let mut output = String::new();
+
+        match self.shell {
+            Shell::Batch => {
+                output.push_str(&format!(":while {} (\n", condition_str));
+                for stmt in body {
+                    output.push_str(&self.compile_statement(stmt)?);
+                }
+                output.push_str(")\n");
+            },
+            Shell::Bash => {
+                output.push_str(&format!("while [[ {} ]]; do\n", condition_str));
+                for stmt in body {
+                    output.push_str(&self.compile_statement(stmt)?);
+                }
+                output.push_str("done\n");
             }
         }
 

@@ -4,5 +4,5 @@ mod error;
 mod compiler;
 
 pub use lexer::Lexer;
-pub use parser::Parser;
-pub use compiler::{Compiler, OS, Shell};
+pub use parser::{Parser, OS};
+pub use compiler::{Compiler, Shell};

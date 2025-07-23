@@ -61,17 +61,25 @@ fn main() {
 
         let str appended_string = string + string2;
 
-        if int(x > 0) {
-            let int x = 10;
-            let int y = 20;
+        with windows {
+            if int(x > 0) {
+                let int x = 10;
+                let int y = 20;
+            }
+            else if int(x < 0) {
+                let int result = x + y;
+                let str string = "this is a string";
+            }
+            else {
+                let str string2 = "this is another string";
+                let str appended_string = string + string2;
+            }
         }
-        else if int(x < 0) {
-            let int result = x + y;
-            let str string = "this is a string";
-        }
-        else {
-            let str string2 = "this is another string";
-            let str appended_string = string + string2;
+
+        with linux {
+            while int(x < 100) {
+                let int x = x + 1;
+            }    
         }
         "#
     );
