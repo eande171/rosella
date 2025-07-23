@@ -53,9 +53,26 @@ fn main() {
     );*/
     let mut lexer = Lexer::new(
         r#"
-        let x = 10;
-        let y = 20;
-        let result = x + y;
+        let int x = 10;
+        let int y = 20;
+
+        let int result = x + y;
+        let str string = "this is a string";
+
+        let str appended_string = string + string2;
+
+        if int(x > 0) {
+            let int x = 10;
+            let int y = 20;
+        }
+        else if int(x < 0) {
+            let int result = x + y;
+            let str string = "this is a string";
+        }
+        else {
+            let str string2 = "this is another string";
+            let str appended_string = string + string2;
+        }
         "#
     );
 
