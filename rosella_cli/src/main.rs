@@ -67,7 +67,7 @@ fn main() {
         while int(x < 100) {
             |> echo "Current value of x: $x";
             let int x = x + 1;
-            cd("home", "user", "documents", x);
+            print("home and ", x);
         }
 
 

@@ -187,7 +187,8 @@ impl Compiler {
     fn compile_function_call(&self, name: &String, args: &Vec<Expr>) -> Result<String, RosellaError> {
         let mut output = String::new();
 
-        if name == "cd" {
+        let allowed_std_functions = ["cd", "print", "echo"];
+        if allowed_std_functions.contains(&name.as_str()) {
             return self.compile_std_function_call(name, args);
         }
 
@@ -219,12 +220,44 @@ impl Compiler {
 
         match name.as_str() {
             "cd" => {
-                if args.len() == 0 {
+                if args.is_empty() {
                     return Err(RosellaError::CompilerError("cd requires a directory argument".to_string()));
                 }
 
                 output.push_str("cd ");
                 output.push_str(self.format_path(args)?.as_str());
+            }
+            "print" | "echo" => {
+                if args.is_empty() {
+                    return Err(RosellaError::CompilerError("print/echo requires at least one argument".to_string()));
+                }
+
+                match self.shell {
+                    Shell::Bash => {
+                        output.push_str("echo \"");
+                        for arg in args {
+                            match arg {
+                                Expr::String(s) => output.push_str(s),
+                                Expr::Identifier(id) => output.push_str(format!("${}", id).as_str()),
+                                Expr::Number(n) => output.push_str(n.to_string().as_str()),
+                                _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type in print/echo: {:?}", arg))),
+                            }
+                        }
+                        output.push_str("\"\n");
+                    }
+                    Shell::Batch => {
+                        output.push_str("echo ");
+                        for arg in args {
+                            match arg {
+                                Expr::String(s) => output.push_str(s),
+                                Expr::Identifier(id) => output.push_str(format!("%%{}%% ", id).as_str()),
+                                Expr::Number(n) => output.push_str(n.to_string().as_str()),
+                                _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type in print/echo: {:?}", arg))),
+                            }
+                        }
+                        output.push('\n');
+                    }
+                }
             }
             _ => unreachable!("Standard function call compilation not implemented for: {}", name),
         }
