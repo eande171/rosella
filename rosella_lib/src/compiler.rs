@@ -187,6 +187,10 @@ impl Compiler {
     fn compile_function_call(&self, name: &String, args: &Vec<Expr>) -> Result<String, RosellaError> {
         let mut output = String::new();
 
+        if name == "cd" {
+            return self.compile_std_function_call(name, args);
+        }
+
         match self.shell {
             Shell::Batch => todo!(),
             Shell::Bash => {
@@ -208,7 +212,25 @@ impl Compiler {
         output.push('\n');
 
         Ok(output)
-    } 
+    }
+
+    fn compile_std_function_call(&self, name: &String, args: &Vec<Expr>) -> Result<String, RosellaError> {
+        let mut output = String::new();
+
+        match name.as_str() {
+            "cd" => {
+                if args.len() == 0 {
+                    return Err(RosellaError::CompilerError("cd requires a directory argument".to_string()));
+                }
+
+                output.push_str("cd ");
+                output.push_str(self.format_path(args)?.as_str());
+            }
+            _ => unreachable!("Standard function call compilation not implemented for: {}", name),
+        }
+
+        Ok(output)
+    }
 
     fn compile_raw_instruction(&self, instructions: &Vec<Expr>) -> Result<String, RosellaError> {
         let mut output = String::new();
@@ -262,15 +284,9 @@ impl Compiler {
                     (Shell::Bash, "str") => {
                         return Ok(format!("\"{}{}\"", left_str, right_str));
                     }
-                    _ => unimplemented!("Batch shell compilation for binary expressions not implemented yet")
+                    _ => todo!("Batch shell compilation for binary expressions not implemented yet")
                 }
             },
-            /*Expr::Call { name, args } => {
-                let args_str: Vec<String> = args.iter()
-                    .map(|arg| self.compile_expr(arg))
-                    .collect::<Result<Vec<String>, RosellaError>>()?;
-                Ok(format!("{}({})", name, args_str.join(", ")))
-            },*/
             _ => unimplemented!("Expression type not implemented for compilation: {:?}", expr)
         }
     }
@@ -313,6 +329,26 @@ impl Compiler {
                 "Operator: {:?} for {:?} on {:?} is not implemented.",
                 operator, condition_type, self.shell)))
         }
+    }
+
+    fn format_path(&self, args: &Vec<Expr>) -> Result<String, RosellaError> {
+        let mut output = String::from('"');
+
+        for arg in args {
+            let arg_str = match arg {
+                Expr::Identifier(id) => format!("${}", id.clone()),
+                Expr::String(s) => s.clone(),
+                Expr::Number(n) => n.to_string(),
+                _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type in cd: {:?}", arg))),
+            };
+            match self.os {
+                OS::Windows => output.push_str(format!("\\{}", arg_str).as_str()),
+                OS::Linux => output.push_str(format!("/{}", arg_str).as_str()),
+            }
+        }
+        output.push_str("\"\n");
+
+        Ok(output)
     }
 
     fn get_condition_type(&self, statement: &Stmt) -> Result<String, RosellaError> {

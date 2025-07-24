@@ -65,9 +65,11 @@ fn main() {
         let int x = 0;
 
         while int(x < 100) {
-            |> echo "Current value of x: $x"\; " and this is a test";
+            |> echo "Current value of x: $x";
             let int x = x + 1;
+            cd("home", "user", "documents", x);
         }
+
 
         "#
     );
