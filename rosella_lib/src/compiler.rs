@@ -190,7 +190,8 @@ impl Compiler {
         let allowed_std_functions = [
             "cd", "print", "echo", "make_dir", "mkdir", 
             "remove_dir", "rmdir", "remove", "del",
-            "path", "copy", "cp", "move", "mv"
+            "path", "copy", "cp", "move", "mv", "read",
+            "exit", "exists"
         ];
         if allowed_std_functions.contains(&name.as_str()) {
             return self.compile_std_function_call(name, args);
@@ -331,7 +332,7 @@ impl Compiler {
 
                 for arg in args {
                     let arg_str = match arg {
-                        Expr::Call { name, args } => {
+                        Expr::Call { name, args } if name == "path" => {
                             self.compile_function_call(name, args)?
                         }
                         _ => return Err(RosellaError::CompilerError(format!("copy/cp requires path() as argument, not: {:?}", arg))),
@@ -353,7 +354,7 @@ impl Compiler {
 
                 for arg in args {
                     let arg_str = match arg {
-                        Expr::Call { name, args } => {
+                        Expr::Call { name, args } if name == "path" => {
                             self.compile_function_call(name, args)?
                         }
                         _ => return Err(RosellaError::CompilerError(format!("move/mv requires path() as argument, not: {:?}", arg))),
@@ -363,6 +364,75 @@ impl Compiler {
                 }
                 output.push('\n');
             }
+            "read" => {
+                if args.len() != 2 {
+                    return Err(RosellaError::CompilerError("read requires exactly two arguments".to_string()));
+                }
+
+                let prompt = match &args[0] {
+                    Expr::String(s) => s,
+                    _ => return Err(RosellaError::CompilerError("First argument of read must be a string".to_string())),
+                };
+
+                let variable = match &args[1] {
+                    Expr::Identifier(id) => id,
+                    _ => return Err(RosellaError::CompilerError("Second argument of read must be an identifier".to_string())),
+                };
+
+                match self.shell {
+                    Shell::Bash => {
+                        output.push_str("read -p \"");
+                        output.push_str(format!("{}: ", prompt).as_str());
+                        output.push_str("\" ");
+                        output.push_str(format!("{} ", variable).as_str());
+                    }
+                    Shell::Batch => {
+                        output.push_str("set /p ");
+                        output.push_str(format!("{}=", variable).as_str());
+                        output.push_str(format!("\"{}: \"", prompt).as_str());
+                    }
+                }
+
+                output.push('\n');
+            }
+            "exit" => {
+                if args.is_empty() {
+                    return Err(RosellaError::CompilerError("exit requires an exit code argument".to_string()));
+                }
+
+                let exit_code = match &args[0] {
+                    Expr::Number(n) => n.to_string(),
+                    _ => return Err(RosellaError::CompilerError("First argument of exit must be a number".to_string())),
+                };
+
+                match self.shell {
+                    Shell::Bash => output.push_str(format!("exit {}\n", exit_code).as_str()),
+                    Shell::Batch => output.push_str(format!("exit /b {}\n", exit_code).as_str()),
+                }
+            }
+            "exists" => {
+                if args.is_empty() {
+                    return Err(RosellaError::CompilerError("exists requires a file path argument".to_string()));
+                }
+
+                output.push_str("-e ");
+
+                output.push('"');
+                for arg in args {
+                    let arg_str = match arg {
+                        Expr::Identifier(id) => format!("${}", id.clone()),
+                        Expr::String(s) => s.clone(),
+                        Expr::Number(n) => n.to_string(),
+                        _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type: {:?}", arg))),
+                    };
+                    match self.os {
+                        OS::Windows => output.push_str(format!("\\{}", arg_str).as_str()),
+                        OS::Linux => output.push_str(format!("/{}", arg_str).as_str()),
+                    }
+                }
+                output.push('"');
+            }
+            
             _ => unreachable!("Standard function call compilation not implemented for: {}", name),
         }
 
@@ -401,7 +471,7 @@ impl Compiler {
             Expr::Identifier(id) => match self.shell {
                 Shell::Batch => Ok(format!("%%{}%%", id)),
                 Shell::Bash => Ok(format!("${}", id)),
-            }, //Ok(id.clone()),
+            },
             Expr::Binary { left, operator, right } => {
                 let left_str = self.compile_expr(left, parent_statement)?;
                 let operator_str = self.format_operator(*operator, parent_statement)?;
@@ -424,7 +494,9 @@ impl Compiler {
                     _ => todo!("Batch shell compilation for binary expressions not implemented yet")
                 }
             },
-            _ => unimplemented!("Expression type not implemented for compilation: {:?}", expr)
+            Expr::Call { name, args } => {
+                self.compile_function_call(name, args)
+            }
         }
     }
 
