@@ -231,6 +231,7 @@ impl Compiler {
 
                 output.push_str("cd ");
                 output.push_str(self.format_path(args)?.as_str());
+                output.push('\n');
             }
             "print" | "echo" => {
                 if args.is_empty() {
@@ -274,6 +275,7 @@ impl Compiler {
                     Shell::Batch => output.push_str("mkdir "),
                 }
                 output.push_str(self.format_path(args)?.as_str());
+                output.push('\n');
             }
             "remove_dir" | "rmdir" => {
                 if args.is_empty() {
@@ -285,6 +287,7 @@ impl Compiler {
                     Shell::Batch => output.push_str("rmdir "),
                 }
                 output.push_str(self.format_path(args)?.as_str());
+                output.push('\n');
             }
             "remove" | "del" => {
                 if args.is_empty() {
@@ -297,28 +300,14 @@ impl Compiler {
                 }
 
                 output.push_str(self.format_path(args)?.as_str());
+                output.push('\n');
             }
             "path" => {
                 if args.is_empty() {
                     return Err(RosellaError::CompilerError("path requires at least one argument".to_string()));
                 }
 
-                output.push('"');
-
-                for arg in args {
-                    let arg_str = match arg {
-                        Expr::Identifier(id) => format!("${}", id.clone()),
-                        Expr::String(s) => s.clone(),
-                        Expr::Number(n) => n.to_string(),
-                        _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type: {:?}", arg))),
-                    };
-                    match self.os {
-                        OS::Windows => output.push_str(format!("\\{}", arg_str).as_str()),
-                        OS::Linux => output.push_str(format!("/{}", arg_str).as_str()),
-                    }
-                }
-
-                output.push_str("\" ");
+                output.push_str(self.format_path(args)?.as_str());
             }
             "copy" | "cp" => {
                 if args.len() != 2 {
@@ -415,22 +404,24 @@ impl Compiler {
                     return Err(RosellaError::CompilerError("exists requires a file path argument".to_string()));
                 }
 
-                output.push_str("-e ");
-
-                output.push('"');
-                for arg in args {
-                    let arg_str = match arg {
-                        Expr::Identifier(id) => format!("${}", id.clone()),
-                        Expr::String(s) => s.clone(),
-                        Expr::Number(n) => n.to_string(),
-                        _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type: {:?}", arg))),
-                    };
-                    match self.os {
-                        OS::Windows => output.push_str(format!("\\{}", arg_str).as_str()),
-                        OS::Linux => output.push_str(format!("/{}", arg_str).as_str()),
-                    }
+                match self.shell {
+                    Shell::Bash => output.push_str("-e "),
+                    Shell::Batch => output.push_str("exist "),
                 }
-                output.push('"');
+
+                output.push_str(self.format_path(args)?.as_str());
+            }
+            "not_exists" => {
+                if args.is_empty() {
+                    return Err(RosellaError::CompilerError("not_exists requires a file path argument".to_string()));
+                }
+
+                match self.shell {
+                    Shell::Bash => output.push_str("! -e "),
+                    Shell::Batch => output.push_str("not exist "),
+                }
+
+                output.push_str(self.format_path(args)?.as_str());
             }
             
             _ => unreachable!("Standard function call compilation not implemented for: {}", name),
@@ -555,7 +546,7 @@ impl Compiler {
                 OS::Linux => output.push_str(format!("/{}", arg_str).as_str()),
             }
         }
-        output.push_str("\"\n");
+        output.push('\"');
 
         Ok(output)
     }
