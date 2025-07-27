@@ -58,35 +58,40 @@ fn main() {
             |> echo "$x + $y = $result";
         }
 
-        add(1, 2);
-        add(3, 4);
-        add(5, 6);
+        add(1, 2)
+        add(3, 4)
+        add(5, 6)
 
         let int x = 0;
 
         while int(x < 100) {
             |> echo "Current value of x: $x";
             let int x = x + 1;
-            print("home and ", x);
+            print("home and ", x)
         }
 
         copy(
-            path("origin", "path");, 
-            path("copy", path);
-        );
+            path("origin", "path"), 
+            path("copy", path)
+        )
 
         move(
-            path("source", "file.txt");,
-            path("destination", "file.txt");
-        );
+            path("source", "file.txt"),
+            path("destination", "file.txt")
+        )
 
-        remove("super", "directory");
+        remove("super", "directory")
 
-        if file(exists("file.txt");) {
-            print("File exists!");
+        if file(exists("file.txt")) {
+            print("File exists!")
         } else {
-            print("File does not exist!");
+            print("File does not exist!")
         }
+
+        read("What is your name?", name)
+        print("Hello, ", name, "!")
+
+        exit(0)
 
         "#
     );

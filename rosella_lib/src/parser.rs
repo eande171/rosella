@@ -101,10 +101,6 @@ impl Parser {
         if self.position < self.tokens.len(){
            self.position += 1;
         }
-        
-        /*if self.current_token() == &Token::Escape {
-            self.position += 1;
-        }*/
     }
 
     fn expect_token(&mut self, expected: &Token) -> Result<(), RosellaError> {
@@ -138,9 +134,6 @@ impl Parser {
             _ => {
                 let expr = self.parse_expression()?;
                 Ok(Stmt::Expression(expr))
-                
-                //Err(RosellaError::InvalidStatement(self.current_token().to_owned()))
-                //panic!("Unhandled Statement: {:?}", self.current_token());
             }
         }
     }
@@ -359,8 +352,7 @@ impl Parser {
                 self.advance();
 
                 let args = self.parse_arguments()?;
-
-                self.expect_token(&Token::Semicolon)?;
+                //self.expect_token(&Token::Semicolon)?;
                 
                 Ok(Expr::Call { name, args })
             }
