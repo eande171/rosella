@@ -187,7 +187,11 @@ impl Compiler {
     fn compile_function_call(&self, name: &String, args: &Vec<Expr>) -> Result<String, RosellaError> {
         let mut output = String::new();
 
-        let allowed_std_functions = ["cd", "print", "echo"];
+        let allowed_std_functions = [
+            "cd", "print", "echo", "make_dir", "mkdir", 
+            "remove_dir", "rmdir", "remove", "del",
+            "path", "copy", "cp", "move", "mv"
+        ];
         if allowed_std_functions.contains(&name.as_str()) {
             return self.compile_std_function_call(name, args);
         }
@@ -258,6 +262,106 @@ impl Compiler {
                         output.push('\n');
                     }
                 }
+            }
+            "make_dir" | "mkdir" => {
+                if args.is_empty() {
+                    return Err(RosellaError::CompilerError("make_dir requires at least one argument".to_string()));
+                }
+
+                match self.shell {
+                    Shell::Bash => output.push_str("mkdir -p "),
+                    Shell::Batch => output.push_str("mkdir "),
+                }
+                output.push_str(self.format_path(args)?.as_str());
+            }
+            "remove_dir" | "rmdir" => {
+                if args.is_empty() {
+                    return Err(RosellaError::CompilerError("remove_dir requires at least one argument".to_string()));
+                }
+
+                match self.shell {
+                    Shell::Bash => output.push_str("rmdir "),
+                    Shell::Batch => output.push_str("rmdir "),
+                }
+                output.push_str(self.format_path(args)?.as_str());
+            }
+            "remove" | "del" => {
+                if args.is_empty() {
+                    return Err(RosellaError::CompilerError("remove requires at least one argument".to_string()));
+                }
+
+                match self.shell {
+                    Shell::Bash => output.push_str("rm -f "),
+                    Shell::Batch => output.push_str("del /Q "),
+                }
+
+                output.push_str(self.format_path(args)?.as_str());
+            }
+            "path" => {
+                if args.is_empty() {
+                    return Err(RosellaError::CompilerError("path requires at least one argument".to_string()));
+                }
+
+                output.push('"');
+
+                for arg in args {
+                    let arg_str = match arg {
+                        Expr::Identifier(id) => format!("${}", id.clone()),
+                        Expr::String(s) => s.clone(),
+                        Expr::Number(n) => n.to_string(),
+                        _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type: {:?}", arg))),
+                    };
+                    match self.os {
+                        OS::Windows => output.push_str(format!("\\{}", arg_str).as_str()),
+                        OS::Linux => output.push_str(format!("/{}", arg_str).as_str()),
+                    }
+                }
+
+                output.push_str("\" ");
+            }
+            "copy" | "cp" => {
+                if args.len() != 2 {
+                    return Err(RosellaError::CompilerError("copy/cp requires exactly two arguments".to_string()));
+                }
+
+                match self.shell {
+                    Shell::Bash => output.push_str("cp "),
+                    Shell::Batch => output.push_str("copy "),
+                }
+
+                for arg in args {
+                    let arg_str = match arg {
+                        Expr::Call { name, args } => {
+                            self.compile_function_call(name, args)?
+                        }
+                        _ => return Err(RosellaError::CompilerError(format!("copy/cp requires path() as argument, not: {:?}", arg))),
+                    };
+
+                    output.push_str(arg_str.as_str());
+                }
+                output.push('\n');
+            }
+            "move" | "mv" => {
+                if args.len() != 2 {
+                    return Err(RosellaError::CompilerError("move/mv requires exactly two arguments".to_string()));
+                }
+
+                match self.shell {
+                    Shell::Bash => output.push_str("mv "),
+                    Shell::Batch => output.push_str("move "),
+                }
+
+                for arg in args {
+                    let arg_str = match arg {
+                        Expr::Call { name, args } => {
+                            self.compile_function_call(name, args)?
+                        }
+                        _ => return Err(RosellaError::CompilerError(format!("move/mv requires path() as argument, not: {:?}", arg))),
+                    };
+
+                    output.push_str(arg_str.as_str());
+                }
+                output.push('\n');
             }
             _ => unreachable!("Standard function call compilation not implemented for: {}", name),
         }
@@ -372,7 +476,7 @@ impl Compiler {
                 Expr::Identifier(id) => format!("${}", id.clone()),
                 Expr::String(s) => s.clone(),
                 Expr::Number(n) => n.to_string(),
-                _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type in cd: {:?}", arg))),
+                _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type: {:?}", arg))),
             };
             match self.os {
                 OS::Windows => output.push_str(format!("\\{}", arg_str).as_str()),
