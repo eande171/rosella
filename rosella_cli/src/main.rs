@@ -70,6 +70,23 @@ fn main() {
             print("home and ", x);
         }
 
+        copy(
+            path("origin", "path");, 
+            path("copy", path);
+        );
+
+        move(
+            path("source", "file.txt");,
+            path("destination", "file.txt");
+        );
+
+        remove("super", "directory");
+
+        if file(exists("file.txt");) {
+            print("File exists!");
+        } else {
+            print("File does not exist!");
+        }
 
         "#
     );
