@@ -34,6 +34,14 @@ impl Compiler {
 
     pub fn compile(&mut self) -> Result<String, RosellaError> {
         let mut output = String::new();
+
+        match self.shell {
+            Shell::Batch => {
+                output.push_str("@echo off\n");
+                output.push_str("setlocal enabledelayedexpansion\n");
+            },
+            Shell::Bash => output.push_str("#!/bin/bash\n"),
+        }
         
         while self.position < self.statements.len() {
             output.push_str(self.compile_statement(self.current_statement())?.as_str());
@@ -90,12 +98,12 @@ impl Compiler {
             Shell::Batch => {
                 output.push_str(&format!("if {} (\n", condition_str));
                 for stmt in then_branch {
-                    output.push_str(&self.compile_statement(stmt)?);
+                    output.push_str(&indent(self.compile_statement(stmt)?));
                 }
                 if let Some(else_branch) = else_branch {
                     output.push_str(") else (\n");
                     for stmt in else_branch {
-                        output.push_str(&self.compile_statement(stmt)?);
+                        output.push_str(&indent(self.compile_statement(stmt)?));
                     }
                 }
                 output.push_str(")\n");
@@ -103,12 +111,12 @@ impl Compiler {
             Shell::Bash => {
                 output.push_str(&format!("if [[ {} ]]; then\n", condition_str));
                 for stmt in then_branch {
-                    output.push_str(&self.compile_statement(stmt)?);
+                    output.push_str(&indent(self.compile_statement(stmt)?));
                 }
                 if let Some(else_branch) = else_branch {
                     output.push_str("else\n");
                     for stmt in else_branch {
-                        output.push_str(&self.compile_statement(stmt)?);
+                        output.push_str(&indent(self.compile_statement(stmt)?));
                     }
                 }
                 output.push_str("fi\n");
@@ -144,16 +152,26 @@ impl Compiler {
 
         match self.shell {
             Shell::Batch => {
-                output.push_str(&format!(":while {} (\n", condition_str));
+                let loop_start_label = format!("while_loop_{}", self.position);
+                let loop_end_label = format!("while_end_{}", self.position);
+                output.push_str(&format!(":{}\n", loop_start_label));
+
+                output.push_str(&indent(format!("if {} (\n", condition_str)));
                 for stmt in body {
-                    output.push_str(&self.compile_statement(stmt)?);
+                    output.push_str(&format!("      {}", &self.compile_statement(stmt)?));
                 }
-                output.push_str(")\n");
+                output.push_str(&format!("      goto :{}\n", loop_start_label));
+                output.push_str(&indent(") else (\n"));
+
+                output.push_str(&format!("      goto :{}\n   )\n", loop_end_label));
+
+                output.push_str(&format!(":{}\n", loop_end_label));
+
             },
             Shell::Bash => {
                 output.push_str(&format!("while [[ {} ]]; do\n", condition_str));
                 for stmt in body {
-                    output.push_str(&self.compile_statement(stmt)?);
+                    output.push_str(&indent(&self.compile_statement(stmt)?));
                 }
                 output.push_str("done\n");
             }
@@ -166,20 +184,37 @@ impl Compiler {
         let mut output = String::new();
 
         match self.shell {
-            Shell::Batch => todo!("Batch shell compilation for functions not implemented yet"),
-            Shell::Bash => {
-                output.push_str(format!("{}() {{\n", name).as_str());
+            Shell::Batch => {
+                output.push_str(&format!(":{}\n", name));
                 if let Some(arguments) = args {
                     for (index, arg) in arguments.iter().enumerate() {
                         let arg_str = match arg {
                             Expr::Identifier(id) => id.clone(),
                             _ => return Err(RosellaError::CompilerError("Function arguments must be identifiers".to_string())),
                         };
-                        output.push_str(format!("local {}=${}\n", arg_str, index+1).as_str());
+                        output.push_str(&indent(format!("set {}=%{}\n", arg_str, index + 1)));
                     }
                 }
                 for stmt in body {
-                    output.push_str(&self.compile_statement(stmt)?);
+                    output.push_str(&indent(self.compile_statement(stmt)?));
+                }
+                output.push_str(&indent("goto :eof\n"));
+            } 
+            
+            //todo!("Batch shell compilation for functions not implemented yet"),
+            Shell::Bash => {
+                output.push_str(&format!("{}() {{\n", name));
+                if let Some(arguments) = args {
+                    for (index, arg) in arguments.iter().enumerate() {
+                        let arg_str = match arg {
+                            Expr::Identifier(id) => id.clone(),
+                            _ => return Err(RosellaError::CompilerError("Function arguments must be identifiers".to_string())),
+                        };
+                        output.push_str(&indent(format!("local {}=${}\n", arg_str, index + 1)));
+                    }
+                }
+                for stmt in body {
+                    output.push_str(&indent(self.compile_statement(stmt)?));
                 }
                 output.push_str("}\n");
             }
@@ -202,7 +237,19 @@ impl Compiler {
         }
 
         match self.shell {
-            Shell::Batch => todo!(),
+            Shell::Batch => {
+                output.push_str(format!("call :{} ", name).as_str());
+                if !args.is_empty() {
+                    for arg in args {
+                        match arg {
+                            Expr::Identifier(id) => output.push_str(format!("!{}! ", id).as_str()),
+                            Expr::String(s) => output.push_str(format!("\"{}\" ", s).as_str()),
+                            Expr::Number(n) => output.push_str(format!("{} ", n).as_str()),
+                            _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type in function call: {:?}", arg))),
+                        }
+                    }
+                }
+            },
             Shell::Bash => {
                 output.push_str(format!("{} ", name).as_str());
 
@@ -260,7 +307,7 @@ impl Compiler {
                         for arg in args {
                             match arg {
                                 Expr::String(s) => output.push_str(s),
-                                Expr::Identifier(id) => output.push_str(format!("%%{}%% ", id).as_str()),
+                                Expr::Identifier(id) => output.push_str(format!("!{}!", id).as_str()),
                                 Expr::Number(n) => output.push_str(n.to_string().as_str()),
                                 _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type in print/echo: {:?}", arg))),
                             }
@@ -288,7 +335,7 @@ impl Compiler {
 
                 match self.shell {
                     Shell::Bash => output.push_str("rmdir "),
-                    Shell::Batch => output.push_str("rmdir "),
+                    Shell::Batch => output.push_str("rmdir /q"),
                 }
                 output.push_str(self.format_path(args)?.as_str());
                 output.push('\n');
@@ -440,7 +487,7 @@ impl Compiler {
                         Expr::Number(n) => Ok(n.to_string()),
                         Expr::String(s) => Ok(s.clone()),
                         Expr::Identifier(id) => match self.shell {
-                            Shell::Batch => Ok(format!("%%{}%%", id)),
+                            Shell::Batch => Ok(format!("!{}!", id)),
                             Shell::Bash => Ok(format!("${}", id)),
                         },
                         _ => return Err(RosellaError::CompilerError(format!("concat requires string or identifier arguments, not: {:?}", arg))),
@@ -486,7 +533,7 @@ impl Compiler {
             Expr::Number(n) => Ok(n.to_string()),
             Expr::String(s) => Ok(format!("\"{}\"", s)),
             Expr::Identifier(id) => match self.shell {
-                Shell::Batch => Ok(format!("%{}%", id)),
+                Shell::Batch => Ok(format!("!{}!", id)),
                 Shell::Bash => Ok(format!("${}", id)),
             },
             Expr::Binary { left, operator, right } => {
@@ -565,7 +612,11 @@ impl Compiler {
 
         for arg in args {
             let arg_str = match arg {
-                Expr::Identifier(id) => format!("${}", id.clone()),
+                Expr::Identifier(id) => match self.shell {
+                    Shell::Batch => format!("!{}!", id),
+                    Shell::Bash => format!("${}", id),
+                    
+                }
                 Expr::String(s) => s.clone(),
                 Expr::Number(n) => n.to_string(),
                 _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type: {:?}", arg))),
@@ -588,4 +639,9 @@ impl Compiler {
             _ => return Err(RosellaError::CompilerError("No condition type found for operator formatting".to_string())),
         }
     }
+}
+
+fn indent<T:  AsRef<str>>(output: T) -> String {
+    let output = output.as_ref();
+    format!("   {}", output)
 }

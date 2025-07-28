@@ -55,7 +55,7 @@ fn main() {
         r#"
         fn add(x, y) {
             let int result = x + y;
-            |> echo "$x + $y = $result";
+            print("Result: ", result)
         }
 
         add(1, 2)
@@ -65,7 +65,7 @@ fn main() {
         let int x = 0;
 
         while int(x < 100) {
-            |> echo "Current value of x: $x";
+            print("Current value of x: ", x)
             let int x = x + 1;
             print("home and ", x)
         }
@@ -80,7 +80,7 @@ fn main() {
             path("destination", "file.txt")
         )
 
-        remove("super", "directory")
+        remove_dir("super", "directory")
 
         if file(exists("file.txt")) {
             print("File exists!")
