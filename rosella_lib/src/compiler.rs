@@ -11,7 +11,7 @@ pub struct Compiler {
     shell: Shell,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Shell {
     Batch,
     Bash,
@@ -200,8 +200,6 @@ impl Compiler {
                 }
                 output.push_str(&indent("goto :eof\n"));
             } 
-            
-            //todo!("Batch shell compilation for functions not implemented yet"),
             Shell::Bash => {
                 output.push_str(&format!("{}() {{\n", name));
                 if let Some(arguments) = args {
@@ -335,7 +333,7 @@ impl Compiler {
 
                 match self.shell {
                     Shell::Bash => output.push_str("rmdir "),
-                    Shell::Batch => output.push_str("rmdir /q"),
+                    Shell::Batch => output.push_str("rmdir /q "),
                 }
                 output.push_str(self.format_path(args)?.as_str());
                 output.push('\n');
@@ -527,8 +525,6 @@ impl Compiler {
     }
 
     fn compile_expr(&self, expr: &Expr, parent_statement: &Stmt) -> Result<String, RosellaError> {
-        println!("Compiling expression: {:?}", expr);
-
         match expr {
             Expr::Number(n) => Ok(n.to_string()),
             Expr::String(s) => Ok(format!("\"{}\"", s)),
@@ -569,9 +565,6 @@ impl Compiler {
 
     fn format_operator(&self, operator: BinaryOp, statement: &Stmt) -> Result<&str, RosellaError> {
         let condition_type = self.get_condition_type(statement)?;
-
-        println!("Condition Type: {:?}", condition_type);
-        println!("Operator: {:?}", operator);
         
         match (self.shell, condition_type.as_str(), operator) {
             (_, _, BinaryOp::Add) => Ok("+"),
