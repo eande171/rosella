@@ -45,7 +45,7 @@ impl Compiler {
 
     fn compile_statement(&self, statement: &Stmt) -> Result<String, RosellaError> {
         match statement {
-            Stmt::Let {name, value, ..} => Ok(self.compile_let_stmt(name, value, statement)?),
+            Stmt::Let {name, value, variable_type} => Ok(self.compile_let_stmt(name, value, variable_type, statement)?),
             Stmt::If {condition, then_branch, else_branch, .. } 
                 => Ok(self.compile_if_stmt(condition, then_branch, else_branch.as_ref(), statement)?),
             Stmt::With {os, body} => Ok(self.compile_with_stmt(*os, body)?), 
@@ -65,11 +65,15 @@ impl Compiler {
         }
     }
 
-    fn compile_let_stmt(&self, name: &String, value: &Expr, parent_statement: &Stmt) -> Result<String, RosellaError> {
+    fn compile_let_stmt(&self, name: &String, value: &Expr, variable_type: &String, parent_statement: &Stmt) -> Result<String, RosellaError> {
         match self.shell {
             Shell::Batch => {
                 let value_str = self.compile_expr(value, parent_statement)?;
-                Ok(format!("set {}={}\n", name, value_str))
+                match variable_type.as_str() {
+                    "int" => Ok(format!("set /a {}={}\n", name, value_str)),
+                    "str" => Ok(format!("set {}={}\n", name, value_str)),
+                    _ => Err(RosellaError::CompilerError(format!("Unsupported variable type: {}", variable_type))),
+                }
             },
             Shell::Bash => {
                 let value_str = self.compile_expr(value, parent_statement)?;
@@ -191,7 +195,7 @@ impl Compiler {
             "cd", "print", "echo", "make_dir", "mkdir", 
             "remove_dir", "rmdir", "remove", "del",
             "path", "copy", "cp", "move", "mv", "read",
-            "exit", "exists"
+            "exit", "exists", "not_exists", "concat"
         ];
         if allowed_std_functions.contains(&name.as_str()) {
             return self.compile_std_function_call(name, args);
@@ -328,6 +332,7 @@ impl Compiler {
                     };
 
                     output.push_str(arg_str.as_str());
+                    output.push(' ');
                 }
                 output.push('\n');
             }
@@ -350,6 +355,7 @@ impl Compiler {
                     };
 
                     output.push_str(arg_str.as_str());
+                    output.push(' ');
                 }
                 output.push('\n');
             }
@@ -423,7 +429,27 @@ impl Compiler {
 
                 output.push_str(self.format_path(args)?.as_str());
             }
-            
+            "concat" => {
+                if args.is_empty() {
+                    return Err(RosellaError::CompilerError("concat requires at least one argument".to_string()));
+                }
+
+                output.push('"');
+                for arg in args {
+                    let arg_str = match arg {
+                        Expr::Number(n) => Ok(n.to_string()),
+                        Expr::String(s) => Ok(s.clone()),
+                        Expr::Identifier(id) => match self.shell {
+                            Shell::Batch => Ok(format!("%%{}%%", id)),
+                            Shell::Bash => Ok(format!("${}", id)),
+                        },
+                        _ => return Err(RosellaError::CompilerError(format!("concat requires string or identifier arguments, not: {:?}", arg))),
+                    };
+                    output.push_str(arg_str?.as_str());
+                }
+                output.push_str("\"\n");
+            }
+
             _ => unreachable!("Standard function call compilation not implemented for: {}", name),
         }
 
@@ -460,7 +486,7 @@ impl Compiler {
             Expr::Number(n) => Ok(n.to_string()),
             Expr::String(s) => Ok(format!("\"{}\"", s)),
             Expr::Identifier(id) => match self.shell {
-                Shell::Batch => Ok(format!("%%{}%%", id)),
+                Shell::Batch => Ok(format!("%{}%", id)),
                 Shell::Bash => Ok(format!("${}", id)),
             },
             Expr::Binary { left, operator, right } => {
@@ -479,10 +505,13 @@ impl Compiler {
                             _ => return Ok(format!("{} {} {}", left_str, operator_str, right_str))
                         }
                     }
-                    (Shell::Bash, "str") => {
-                        return Ok(format!("\"{}{}\"", left_str, right_str));
+                    (Shell::Batch, "int") => {
+                        return Ok(format!("{} {} {}", left_str, operator_str, right_str));
                     }
-                    _ => todo!("Batch shell compilation for binary expressions not implemented yet")
+                    (Shell::Bash | Shell::Batch, "str") => {
+                        return Err(RosellaError::CompilerError(format!("Use concat() for string concatenation, not binary expressions: {:?}", expr)));
+                    }
+                    _ => return Err(RosellaError::CompilerError(format!("Unsupported condition type: {}", condition_type))),
                 }
             },
             Expr::Call { name, args } => {
