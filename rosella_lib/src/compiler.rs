@@ -6,7 +6,7 @@ use super::error::RosellaError;
 
 pub struct Compiler {
     statements: Vec<Stmt>,
-    position: usize,
+    unique_index: usize,
     os: OS,
     shell: Shell,
 }
@@ -21,15 +21,16 @@ impl Compiler {
     pub fn new(statements: Vec<Stmt>, os: OS, shell: Shell) -> Self {
         Compiler {
             statements,
-            position: 0,
+            unique_index: 0,
             os,
             shell,
         }
     }
 
-    fn current_statement(&self) -> &Stmt {
-        self.statements.get(self.position)
-            .expect("No current statement found")
+    fn next_unique_index(&mut self) -> usize {
+        let index = self.unique_index;
+        self.unique_index += 1;
+        index
     }
 
     pub fn compile(&mut self) -> Result<String, RosellaError> {
@@ -42,16 +43,15 @@ impl Compiler {
             },
             Shell::Bash => output.push_str("#!/bin/bash\n"),
         }
-        
-        while self.position < self.statements.len() {
-            output.push_str(self.compile_statement(self.current_statement())?.as_str());
-            self.position += 1;
+
+        for statement in &self.statements.clone() {
+            output.push_str(&self.compile_statement(&statement)?);
         }
 
         Ok(output)
     }
 
-    fn compile_statement(&self, statement: &Stmt) -> Result<String, RosellaError> {
+    fn compile_statement(&mut self, statement: &Stmt) -> Result<String, RosellaError> {
         match statement {
             Stmt::Let {name, value, variable_type} => Ok(self.compile_let_stmt(name, value, variable_type, statement)?),
             Stmt::If {condition, then_branch, else_branch, .. } 
@@ -69,7 +69,7 @@ impl Compiler {
 
                 Ok(self.compile_function_call(name, args)?)
             }
-            Stmt::RawInstruction(instructions) => Ok(self.compile_raw_instruction(instructions)?),
+            Stmt::RawInstruction(instructions) => Ok(self.compile_raw_instruction(instructions, statement)?),
         }
     }
 
@@ -90,7 +90,7 @@ impl Compiler {
         }
     }
 
-    fn compile_if_stmt(&self, condition: &Expr, then_branch: &Vec<Stmt>, else_branch: Option<&Vec<Stmt>>, parent_statement: &Stmt) -> Result<String, RosellaError> {
+    fn compile_if_stmt(&mut self, condition: &Expr, then_branch: &Vec<Stmt>, else_branch: Option<&Vec<Stmt>>, parent_statement: &Stmt) -> Result<String, RosellaError> {
         let condition_str = self.compile_expr(condition, parent_statement)?;
         let mut output = String::new();
 
@@ -126,7 +126,7 @@ impl Compiler {
         Ok(output)
     }
 
-    fn compile_with_stmt(&self, os: OS, body: &Vec<Stmt>) -> Result<String, RosellaError> {
+    fn compile_with_stmt(&mut self, os: OS, body: &Vec<Stmt>) -> Result<String, RosellaError> {
         let mut output = String::new();
 
         match (self.os, os) {
@@ -146,14 +146,16 @@ impl Compiler {
         Ok(output)
     }
 
-    fn compile_while_stmt(&self, condition: &Expr, body: &Vec<Stmt>, parent_statement: &Stmt) -> Result<String, RosellaError> {
+    fn compile_while_stmt(&mut self, condition: &Expr, body: &Vec<Stmt>, parent_statement: &Stmt) -> Result<String, RosellaError> {
         let condition_str = self.compile_expr(condition, parent_statement)?;
         let mut output = String::new();
 
         match self.shell {
             Shell::Batch => {
-                let loop_start_label = format!("while_loop_{}", self.position);
-                let loop_end_label = format!("while_end_{}", self.position);
+                let index = self.next_unique_index();
+
+                let loop_start_label = format!("while_loop_{}", index);
+                let loop_end_label = format!("while_end_{}", index);
                 output.push_str(&format!(":{}\n", loop_start_label));
 
                 output.push_str(&indent(format!("if {} (\n", condition_str)));
@@ -180,7 +182,7 @@ impl Compiler {
         Ok(output)
     }
 
-    fn compile_function(&self, name: &str, args: &Option<Vec<Expr>>, body: &Vec<Stmt>) -> Result<String, RosellaError> {
+    fn compile_function(&mut self, name: &str, args: &Option<Vec<Expr>>, body: &Vec<Stmt>) -> Result<String, RosellaError> {
         let mut output = String::new();
 
         match self.shell {
@@ -501,7 +503,7 @@ impl Compiler {
         Ok(output)
     }
 
-    fn compile_raw_instruction(&self, instructions: &Vec<Expr>) -> Result<String, RosellaError> {
+    fn compile_raw_instruction(&self, instructions: &Vec<Expr>, parent_statement: &Stmt) -> Result<String, RosellaError> {
         let mut output = String::new();
 
         for instruction in instructions {
@@ -509,9 +511,9 @@ impl Compiler {
                 Expr::String(s) => output.push_str(format!("\"{}\" ", s).as_str()),
                 Expr::Identifier(s) => output.push_str(format!("{} ", s).as_str()),
                 Expr::Binary { left, operator, right } => {
-                    let left_str = self.compile_expr(left, self.current_statement())?;
-                    let operator_str = self.format_operator(*operator, self.current_statement())?;
-                    let right_str = self.compile_expr(right, self.current_statement())?;
+                    let left_str = self.compile_expr(left, parent_statement)?;
+                    let operator_str = self.format_operator(*operator, parent_statement)?;
+                    let right_str = self.compile_expr(right, parent_statement)?;
                     output.push_str(format!("{} {} {} ", left_str, operator_str, right_str).as_str());
                 },
                 Expr::Number(n) => output.push_str(format!("{} ", n).as_str()),
