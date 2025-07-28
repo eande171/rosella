@@ -92,7 +92,6 @@ fn main() {
         print("Hello, ", name, "!")
 
         exit(0)
-
         "#
     );
 
@@ -109,7 +108,7 @@ fn main() {
 
     println!("AST: {:?}", ast);
 
-    let output = match Compiler::new(ast, OS::Linux, Shell::Bash)
+    let output = match Compiler::new(ast, OS::Windows, Shell::Batch)
         .compile() {
             Ok(result) => result,
             Err(e) => panic!("{}", e)

@@ -352,7 +352,6 @@ impl Parser {
                 self.advance();
 
                 let args = self.parse_arguments()?;
-                //self.expect_token(&Token::Semicolon)?;
                 
                 Ok(Expr::Call { name, args })
             }

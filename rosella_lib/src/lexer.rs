@@ -40,7 +40,6 @@ pub enum Token {
     LBraceSquare,           // [
     RBraceSquare,           // ]
     
-    //Escape,                 // \ (used for escaping characters)
     Comma,                  // ,
     Semicolon,              // ;
 
