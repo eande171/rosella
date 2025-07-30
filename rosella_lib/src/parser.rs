@@ -117,6 +117,11 @@ impl Parser {
         let mut statements: Vec<Stmt> = Vec::new();
 
         while self.current_token() != &Token::EOF {
+            if self.current_token() == &Token::Comment {
+                self.advance();
+                continue; 
+            }
+
             statements.push(self.parse_stmt()?);
         }
 
