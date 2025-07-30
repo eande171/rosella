@@ -16,7 +16,7 @@ Installing Rosella is as simple as downloading the latest binary from [releases]
 
 ## First Rosella Script
 Here is a super simple `Hello World` script in the file `hello.rosella`:
-```csharp
+```javascript
 print("Hello World!")
 ```
 
@@ -31,7 +31,7 @@ Given the nature of the transpiler, **Rosella** *does* have some syntactic quirk
 
 ## Larger Example
 An example of what more complicated **Rosella** code looks like:
-```csharp
+```javascript
 fn add(x, y) {
     let int result = x + y;
     print("Result: ", result)
