@@ -79,7 +79,7 @@ impl Compiler {
                 let value_str = self.compile_expr(value, parent_statement)?;
                 match variable_type.as_str() {
                     "int" => Ok(format!("set /a {}={}\n", name, value_str)),
-                    "str" => Ok(format!("set {}={}\n", name, value_str)),
+                    "str" => Ok(format!("set \"{}={}\"\n", name, value_str)),
                     _ => Err(RosellaError::CompilerError(format!("Unsupported variable type: {}", variable_type))),
                 }
             },
@@ -529,7 +529,10 @@ impl Compiler {
     fn compile_expr(&self, expr: &Expr, parent_statement: &Stmt) -> Result<String, RosellaError> {
         match expr {
             Expr::Number(n) => Ok(n.to_string()),
-            Expr::String(s) => Ok(format!("\"{}\"", s)),
+            Expr::String(s) => match self.shell {
+                Shell::Batch => Ok(s.clone()),
+                Shell::Bash => Ok(format!("\"{}\"", s)),
+            }//Ok(format!("\"{}\"", s)),
             Expr::Identifier(id) => match self.shell {
                 Shell::Batch => Ok(format!("!{}!", id)),
                 Shell::Bash => Ok(format!("${}", id)),
@@ -553,8 +556,11 @@ impl Compiler {
                     (Shell::Batch, "int") => {
                         return Ok(format!("{} {} {}", left_str, operator_str, right_str));
                     }
-                    (Shell::Bash | Shell::Batch, "str") => {
-                        return Err(RosellaError::CompilerError(format!("Use concat() for string concatenation, not binary expressions: {:?}", expr)));
+                    (Shell::Bash, "str") => {
+                        return Ok(format!("{} {} {}", left_str, operator_str, right_str)); 
+                    }
+                    (Shell::Batch, "str") => {
+                        return Ok(format!("\"{}\" {} \"{}\"", left_str, operator_str, right_str));
                     }
                     _ => return Err(RosellaError::CompilerError(format!("Unsupported condition type: {}", condition_type))),
                 }
