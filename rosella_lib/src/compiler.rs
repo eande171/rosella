@@ -256,7 +256,7 @@ impl Compiler {
                 if !args.is_empty() {
                     for arg in args {
                         match arg {
-                            Expr::Identifier(id) => output.push_str(format!("\"${}\" ", id).as_str()),
+                            Expr::Identifier(id) => output.push_str(format!("\"${{{}}}\" ", id).as_str()),
                             Expr::String(s) => output.push_str(format!("\"{}\" ", s).as_str()),
                             Expr::Number(n) => output.push_str(format!("{} ", n).as_str()),
                             _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type in function call: {:?}", arg))),
@@ -295,7 +295,7 @@ impl Compiler {
                         for arg in args {
                             match arg {
                                 Expr::String(s) => output.push_str(s),
-                                Expr::Identifier(id) => output.push_str(format!("${}", id).as_str()),
+                                Expr::Identifier(id) => output.push_str(format!("${{{}}}", id).as_str()),
                                 Expr::Number(n) => output.push_str(n.to_string().as_str()),
                                 _ => return Err(RosellaError::CompilerError(format!("Unsupported argument type in print/echo: {:?}", arg))),
                             }
@@ -488,7 +488,7 @@ impl Compiler {
                         Expr::String(s) => Ok(s.clone()),
                         Expr::Identifier(id) => match self.shell {
                             Shell::Batch => Ok(format!("!{}!", id)),
-                            Shell::Bash => Ok(format!("${}", id)),
+                            Shell::Bash => Ok(format!("${{{}}}", id)),
                         },
                         _ => return Err(RosellaError::CompilerError(format!("concat requires string or identifier arguments, not: {:?}", arg))),
                     };
@@ -535,7 +535,7 @@ impl Compiler {
             }//Ok(format!("\"{}\"", s)),
             Expr::Identifier(id) => match self.shell {
                 Shell::Batch => Ok(format!("!{}!", id)),
-                Shell::Bash => Ok(format!("${}", id)),
+                Shell::Bash => Ok(format!("${{{}}}", id)),
             },
             Expr::Binary { left, operator, right } => {
                 let left_str = self.compile_expr(left, parent_statement)?;
@@ -615,7 +615,7 @@ impl Compiler {
             let arg_str = match arg {
                 Expr::Identifier(id) => match self.shell {
                     Shell::Batch => format!("!{}!", id),
-                    Shell::Bash => format!("${}", id),
+                    Shell::Bash => format!("${{{}}}", id),
                     
                 }
                 Expr::String(s) => s.clone(),
