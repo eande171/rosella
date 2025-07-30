@@ -43,6 +43,9 @@ pub enum Token {
     Comma,                  // ,
     Semicolon,              // ;
 
+    // Comments
+    Comment,           // /*
+
     EOF
 }
 pub struct Lexer {
@@ -146,10 +149,6 @@ impl Lexer {
         self.advance();
 
         match current_char {
-            /*Some('\\') => {
-                self.advance();
-                Ok(Token::Escape)
-            },*/
             Some('=') => {
                 if self.current_character == Some('=') {
                     self.advance();
@@ -159,15 +158,25 @@ impl Lexer {
             }
             Some('+') => Ok(Token::Plus),
             Some('-') => Ok(Token::Minus),
-            Some('*') => Ok(Token::Multiply),
-            Some('/') => Ok(Token::Divide),
+            Some('*') => {
+                Ok(Token::Multiply)
+            },
+            Some('/') => {
+                if self.current_character == Some('*') {
+                    self.consume_comment()?;
+                    return Ok(Token::Comment);                    
+                }
+                else {
+                    Ok(Token::Divide)
+                }
+            },
 
             Some('<') => {
                 if self.current_character == Some('=') {
                     self.advance();
                     Ok(Token::LessThanEq)
                 }
-                else {
+                else{
                     Ok(Token::LessThan) 
                 }
             }
@@ -194,6 +203,22 @@ impl Lexer {
             Some(_) => Err(RosellaError::InvalidPunctuation(current_char)),
             None => Ok(Token::EOF)
         }
+    }
+
+    fn consume_comment(&mut self) -> Result<(), RosellaError> {
+        self.advance(); // Skip the initial '*'
+        while let Some(ch) = self.current_character {
+            if ch == '*' {
+                self.advance();
+                if self.current_character == Some('/') {
+                    self.advance();
+                    return Ok(());
+                }
+            } else {
+                self.advance();
+            }
+        }
+        Err(RosellaError::ParseError("Expected */ to end comment".to_string()))
     }
 
     pub fn tokenise(&mut self) -> Result<Vec<Token>, RosellaError> {
