@@ -1,3 +1,5 @@
+<img src="./rosella.svg" width="25%">
+
 # Rosella
 Robust Operating System shELL Adaptor
 

@@ -334,8 +334,8 @@ impl Compiler {
                 }
 
                 match self.shell {
-                    Shell::Bash => output.push_str("rmdir "),
-                    Shell::Batch => output.push_str("rmdir /q "),
+                    Shell::Bash => output.push_str("rmdir -r "),
+                    Shell::Batch => output.push_str("rmdir /s /q "),
                 }
                 output.push_str(self.format_path(args)?.as_str());
                 output.push('\n');
@@ -616,7 +616,6 @@ impl Compiler {
                 Expr::Identifier(id) => match self.shell {
                     Shell::Batch => format!("!{}!", id),
                     Shell::Bash => format!("${{{}}}", id),
-                    
                 }
                 Expr::String(s) => s.clone(),
                 Expr::Number(n) => n.to_string(),
