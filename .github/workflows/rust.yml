@@ -1,0 +1,53 @@
+name: Build and Release Artifacts
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build_and_upload:
+    # Use a strategy matrix to run the job on both Linux and Windows.
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    # Set the runner OS based on the matrix.
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build project in release mode
+        run: cargo build --verbose --release
+
+      - name: Upload Linux Artifact
+        # This step will only run on the Linux runner.
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          # The name of the artifact to be uploaded.
+          name: rosella-linux
+          # The path to the file(s) to be uploaded.
+          # IMPORTANT: Replace 'your-executable-name' with the actual name of your binary.
+          path: target/release/rosella_cli
+
+      - name: Upload Windows Artifact
+        # This step will only run on the Windows runner.
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          # The name of the artifact to be uploaded.
+          name: rosella-windows
+          # The path to the file(s) to be uploaded.
+          path: target/release/rosella_cli.exe
