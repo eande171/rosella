@@ -230,7 +230,7 @@ impl Compiler {
             "cd", "print", "echo", "make_dir", "mkdir", 
             "remove_dir", "rmdir", "remove", "del",
             "path", "copy", "cp", "move", "mv", 
-            "write_file", "append_file", "read",
+            "write_file", "append_file", "get_cwd", "read",
             "exit", "exists", "not_exists", "concat"
         ];
         if allowed_std_functions.contains(&name.as_str()) {
@@ -429,6 +429,16 @@ impl Compiler {
                 let operator = if name == "write_file" { ">" } else { ">>" };
 
                 output.push_str(format!("echo {} {} {}\n", content, operator, path).as_str());
+            }
+            "get_cwd" => {
+                if args.len() > 0 {
+                    return Err(RosellaError::CompilerError("get_cwd() requires has no arguments.".to_string()))
+                }
+
+                match self.shell {
+                    Shell::Batch => output.push_str("%CD%"),
+                    Shell::Bash => output.push_str("${PWD}"),
+                }
             }
             "read" => {
                 if args.len() != 2 {
