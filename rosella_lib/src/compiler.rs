@@ -229,7 +229,8 @@ impl Compiler {
         let allowed_std_functions = [
             "cd", "print", "echo", "make_dir", "mkdir", 
             "remove_dir", "rmdir", "remove", "del",
-            "path", "copy", "cp", "move", "mv", "read",
+            "path", "copy", "cp", "move", "mv", 
+            "write_file", "append_file", "read",
             "exit", "exists", "not_exists", "concat"
         ];
         if allowed_std_functions.contains(&name.as_str()) {
@@ -373,7 +374,7 @@ impl Compiler {
                 for arg in args {
                     let arg_str = match arg {
                         Expr::Call { name, args } if name == "path" => {
-                            self.compile_function_call(name, args)?
+                            self.format_path(args)?
                         }
                         _ => return Err(RosellaError::CompilerError(format!("copy/cp requires path() as argument, not: {:?}", arg))),
                     };
@@ -396,7 +397,7 @@ impl Compiler {
                 for arg in args {
                     let arg_str = match arg {
                         Expr::Call { name, args } if name == "path" => {
-                            self.compile_function_call(name, args)?
+                            self.format_path(args)?
                         }
                         _ => return Err(RosellaError::CompilerError(format!("move/mv requires path() as argument, not: {:?}", arg))),
                     };
@@ -405,6 +406,29 @@ impl Compiler {
                     output.push(' ');
                 }
                 output.push('\n');
+            }
+            "write_file" | "append_file" => {
+                if args.len() != 2 {
+                    return Err(RosellaError::CompilerError(format!("{} requires at exactly two arguments: a path() and concat()", name)));
+                }
+
+                let path = match &args[0] {
+                    Expr::Call { name, args } if name == "path" => {
+                        self.format_path(args)?
+                    }
+                    _ => return Err(RosellaError::CompilerError(format!("{} requires path() as argument, not: {:?}", name, args[0]))),
+                };
+
+                let content = match &args[1] {
+                    Expr::Call { name, args } if name == "concat" => {
+                        self.compile_std_function_call(name, args)?
+                    }
+                    _ => return Err(RosellaError::CompilerError(format!("{} requires concat() as argument, not: {:?}", name, args[1]))),
+                };
+
+                let operator = if name == "write_file" { ">" } else { ">>" };
+
+                output.push_str(format!("echo {} {} {}\n", content, operator, path).as_str());
             }
             "read" => {
                 if args.len() != 2 {
@@ -494,7 +518,7 @@ impl Compiler {
                     };
                     output.push_str(arg_str?.as_str());
                 }
-                output.push_str("\"\n");
+                output.push_str("\"");
             }
 
             _ => unreachable!("Standard function call compilation not implemented for: {}", name),
