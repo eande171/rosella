@@ -1,8 +1,4 @@
-use rosella::Lexer;
-use rosella::Parser;
-use rosella::Compiler;
-use rosella::Shell;
-use rosella::OS;
+use rosella::{Lexer, Parser, Compiler, Shell, OS};
 
 use clap::{Parser as ClapParser, Subcommand, ValueEnum};
 use std::path::PathBuf;
@@ -27,8 +23,8 @@ enum Commands {
         #[arg(short, long, value_name = "FILE", value_parser = clap::value_parser!(PathBuf))]
         output: Option<PathBuf>,
 
-        #[arg(long, value_enum)]
-        os: Option<TargetOS>,
+        #[arg(short, long, value_enum)]
+        target: Option<TargetOS>,
 
         #[arg(short, long, value_enum)]
         shell: Option<TargetShell>,
@@ -55,7 +51,7 @@ fn main() {
         Commands::Compile { 
             input, 
             output, 
-            os, 
+            target, 
             shell 
         } => {
             let input_content = match std::fs::read_to_string(input) {
@@ -66,7 +62,7 @@ fn main() {
                 }
             };
 
-            let target_os = match os {
+            let target_os = match target {
                 Some(os) => {
                     match os {
                         TargetOS::Windows => OS::Windows,
@@ -150,115 +146,4 @@ fn main() {
             }
         }
     }
-
-    /*let mut lexer = Lexer::new(
-        r#"
-        fn add(x, y) {
-            let result = x + y;
-            |> "echo" result;
-        }
-        "#
-    );*/
-
-    /*let mut lexer = Lexer::new(
-  r#"
-        let result = x + y;
-        let string = "this is a string";
-        "#
-    );*/
-
-    /*let mut lexer = Lexer::new(
-        r#"
-        fn add(x, y) {
-            let result = x + y;
-        }
-
-        if int(x > 0) {
-            add(1, 2);
-        }
-        else if int(x < 0) {
-            add(2, 3);
-        }
-        else {
-            add(3, 4);
-        }
-
-        with windows {
-            print("Using Windows");
-        }
-        with linux {
-            print("Using Linux");
-        }
-        with macos {
-            print("Using MacOS");
-        }
-
-        |> "echo Hello, World!";
-        |> "echo This is a test" variable "-t 100";
-        "#
-    );*/
-    /*let mut lexer = Lexer::new(
-        r#"
-        fn add(x, y) {
-            let int result = x + y;
-            print("Result: ", result)
-        }
-
-        add(1, 2)
-        add(3, 4)
-        add(5, 6)
-
-        let int x = 0;
-
-        while int(x < 100) {
-            print("Current value of x: ", x)
-            let int x = x + 1;
-            print("home and ", x)
-        }
-
-        copy(
-            path("origin", "path"), 
-            path("copy", path)
-        )
-
-        move(
-            path("source", "file.txt"),
-            path("destination", "file.txt")
-        )
-
-        remove_dir("super", "directory")
-
-        if file(exists("file.txt")) {
-            print("File exists!")
-        } else {
-            print("File does not exist!")
-        }
-
-        read("What is your name?", name)
-        print("Hello, ", name, "!")
-
-        exit(0)
-        "#
-    );
-
-    let tokens = lexer.tokenise().unwrap();
-
-    println!("{:?}", tokens);
-
-    let mut parser = Parser::new(tokens);
-
-    let ast = match parser.parse() {
-        Ok(result) => result,
-        Err(e) => panic!("{}", e)
-    };
-
-    println!("AST: {:?}", ast);
-
-    let output = match Compiler::new(ast, OS::Windows, Shell::Batch)
-        .compile() {
-            Ok(result) => result,
-            Err(e) => panic!("{}", e)
-        };
-
-    println!("Compiled Output:\n{}", output);*/
 }
