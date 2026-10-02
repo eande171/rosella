@@ -28,7 +28,3 @@ if "apple" LSS "banana" (
 if not exist "missing.txt" (
     echo(no file
 )
-set /a "rosella_temp2=x"
-if !rosella_temp2! GTR 1 (
-    echo(explicit
-)

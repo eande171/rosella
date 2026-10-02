@@ -9,9 +9,10 @@ pub enum Token {
     Else,
     With, // E.g. with windows, with linux
     While,
+    Return,
 
     // Identifier & Literals
-    Number(f64),
+    Number(i64),
     String(String),
     Identifier(String),
 

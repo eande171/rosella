@@ -1,5 +1,5 @@
 use super::backend::{Arith, Part};
-use super::{Generator, error};
+use super::{Generator, error, is_read, is_user_function};
 use crate::builtins::{self, Builtin};
 use crate::error::RosellaError;
 use crate::syntax::{BinaryOp, Expr, OS};
@@ -8,18 +8,68 @@ impl Generator {
     // Rename Local Parameters
     pub(super) fn resolve(&self, name: &str) -> String {
         match &self.function {
-            Some((function, parameters)) if parameters.contains(name) => {
-                self.backend.local_name(function, name)
+            Some(scope) if scope.parameters.contains(name) => {
+                self.backend.local_name(&scope.name, name)
             }
             _ => name.to_string(),
         }
+    }
+
+    // Calls Run Before The Statement
+    pub(super) fn hoist(&mut self, expr: &Expr, setup: &mut String) -> Result<Expr, RosellaError> {
+        match expr {
+            Expr::Binary {
+                left,
+                operator,
+                right,
+            } => Ok(Expr::Binary {
+                left: Box::new(self.hoist(left, setup)?),
+                operator: *operator,
+                right: Box::new(self.hoist(right, setup)?),
+            }),
+            Expr::Call { name, args } if is_read(name) => {
+                let prompt = self.hoist(&args[0], setup)?;
+                let result = self.next_result();
+                let local = self.function.is_some();
+                setup.push_str(
+                    &self
+                        .backend
+                        .read(&self.value_parts(&prompt)?, &result, local)?,
+                );
+                Ok(Expr::Identifier(result))
+            }
+            Expr::Call { name, args } if is_user_function(name) => {
+                let call = self.user_call(name, args, setup)?;
+                setup.push_str(&call);
+                let result = self.next_result();
+                setup.push_str(&self.backend.capture(&result, self.function.is_some()));
+                Ok(Expr::Identifier(result))
+            }
+            Expr::Call { name, args } => {
+                let mut hoisted = Vec::new();
+                for arg in args {
+                    hoisted.push(self.hoist(arg, setup)?);
+                }
+                Ok(Expr::Call {
+                    name: name.clone(),
+                    args: hoisted,
+                })
+            }
+            other => Ok(other.clone()),
+        }
+    }
+
+    fn next_result(&mut self) -> String {
+        let result = format!("rosella_result{}", self.results);
+        self.results += 1;
+        result
     }
 
     pub(super) fn arith(&self, expr: &Expr) -> Result<Arith, RosellaError> {
         Ok(Arith {
             text: self.arithmetic(expr)?,
             literal: match expr {
-                Expr::Number(n) => Some(*n as i64),
+                Expr::Number(n) => Some(*n),
                 _ => None,
             },
             grouped: matches!(expr, Expr::Binary { .. }),
@@ -28,8 +78,8 @@ impl Generator {
 
     fn arithmetic(&self, expr: &Expr) -> Result<String, RosellaError> {
         match expr {
-            Expr::Number(n) if *n < 0.0 => Ok(format!("({})", integer(*n)?)),
-            Expr::Number(n) => integer(*n),
+            Expr::Number(n) if *n < 0 => Ok(format!("({})", n)),
+            Expr::Number(n) => Ok(n.to_string()),
             Expr::Identifier(name) => Ok(self.resolve(name)),
             Expr::Binary {
                 left,
@@ -65,7 +115,7 @@ impl Generator {
     pub(super) fn value_parts(&self, expr: &Expr) -> Result<Vec<Part>, RosellaError> {
         match expr {
             Expr::String(s) => Ok(vec![Part::Text(s.clone())]),
-            Expr::Number(n) => Ok(vec![Part::Text(format_number(*n))]),
+            Expr::Number(n) => Ok(vec![Part::Text(n.to_string())]),
             Expr::Identifier(name) => Ok(vec![Part::Var(self.resolve(name))]),
             Expr::Call { name, args } => {
                 match builtins::find(name).map(|signature| signature.builtin) {
@@ -116,24 +166,5 @@ impl Generator {
         }
 
         Ok(parts)
-    }
-}
-
-fn integer(n: f64) -> Result<String, RosellaError> {
-    // Batch Uses 32 Bit Integers
-    if n.fract() != 0.0 || n.abs() > i32::MAX as f64 {
-        return Err(error(format!(
-            "{} is not a whole number that int can hold",
-            n
-        )));
-    }
-    Ok(format!("{}", n as i64))
-}
-
-fn format_number(n: f64) -> String {
-    if n.fract() == 0.0 && n.abs() < 1e15 {
-        format!("{}", n as i64)
-    } else {
-        n.to_string()
     }
 }

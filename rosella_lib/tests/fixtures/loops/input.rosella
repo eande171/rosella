@@ -5,9 +5,9 @@ if x == 1 {
         let int j = 0;
         while j < 2 {
             print(i, j);
-            let int j = j + 1;
+            j = j + 1;
         }
-        let int i = i + 1;
+        i = i + 1;
     }
     print("then");
 } else {

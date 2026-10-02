@@ -2,7 +2,7 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Number(f64),
+    Number(i64),
     String(String),
     Identifier(String),
     Binary {
@@ -49,6 +49,7 @@ pub enum OS {
 pub enum Type {
     Int,
     Str,
+    // Conditions Only
     File,
 }
 
@@ -57,7 +58,6 @@ impl Type {
         match name {
             "int" => Some(Type::Int),
             "str" => Some(Type::Str),
-            "file" => Some(Type::File),
             _ => None,
         }
     }
@@ -76,7 +76,7 @@ impl fmt::Display for Type {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Param {
     pub name: String,
-    pub param_type: Option<Type>,
+    pub param_type: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,6 +84,11 @@ pub enum Stmt {
     Expression(Expr),
     Let {
         variable_type: Type,
+        name: String,
+        value: Expr,
+    },
+    Assign {
+        variable_type: Option<Type>,
         name: String,
         value: Expr,
     },
@@ -104,8 +109,10 @@ pub enum Stmt {
     },
     Function {
         name: String,
+        return_type: Option<Type>,
         parameters: Vec<Param>,
         body: Vec<Stmt>,
     },
+    Return(Option<Expr>),
     RawInstruction(String),
 }

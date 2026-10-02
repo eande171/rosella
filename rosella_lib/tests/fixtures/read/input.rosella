@@ -1,2 +1,2 @@
-read("", name);
+let str name = read("");
 print("Hello ", name, "!");

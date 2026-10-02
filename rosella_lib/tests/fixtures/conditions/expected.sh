@@ -22,6 +22,3 @@ fi
 if [[ ! -e "missing.txt" ]]; then
     printf '%s\n' "no file"
 fi
-if (( x > 1 )); then
-    printf '%s\n' "explicit"
-fi

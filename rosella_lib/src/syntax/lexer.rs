@@ -48,12 +48,14 @@ impl Lexer {
         self.current_character = self.input.get(self.position).copied();
     }
 
-    fn read_number(&mut self) -> Result<f64, RosellaError> {
+    fn read_number(&mut self) -> Result<i64, RosellaError> {
         let start = self.span();
         let mut string: String = String::new();
 
+        // Capture Decimals For The Error
         while let Some(ch) = self.current_character {
-            if ch.is_ascii_digit() || ch == '.' {
+            let decimal = ch == '.' && self.peek().is_some_and(|next| next.is_ascii_digit());
+            if ch.is_ascii_digit() || decimal {
                 string.push(ch);
                 self.advance();
             } else {
@@ -61,9 +63,11 @@ impl Lexer {
             }
         }
 
-        string
-            .parse()
-            .map_err(|_| RosellaError::InvalidNumber(string, start))
+        // Batch Uses 32 Bit Integers
+        match string.parse::<i64>() {
+            Ok(number) if number <= i32::MAX as i64 => Ok(number),
+            _ => Err(RosellaError::InvalidNumber(string, start)),
+        }
     }
 
     fn read_string(&mut self) -> Result<String, RosellaError> {
@@ -145,6 +149,7 @@ impl Lexer {
             "else" => Token::Else,
             "with" => Token::With,
             "while" => Token::While,
+            "return" => Token::Return,
             _ => Token::Identifier(text),
         }
     }
@@ -240,9 +245,6 @@ impl Lexer {
                 }
 
                 Some(ch) if ch.is_ascii_digit() => Token::Number(self.read_number()?),
-                Some('.') if self.peek().is_some_and(|ch| ch.is_ascii_digit()) => {
-                    Token::Number(self.read_number()?)
-                }
                 Some(ch) if ch.is_ascii_alphabetic() || ch == '_' => {
                     let ident = self.read_identifier();
                     self.determine_keyword(ident)
@@ -343,11 +345,17 @@ z"
 
     #[test]
     fn numbers() {
-        assert_eq!(tokens(".5")[0], Token::Number(0.5));
-        assert_eq!(tokens("12.25")[0], Token::Number(12.25));
+        assert_eq!(tokens("12")[0], Token::Number(12));
+        assert_eq!(tokens("2147483647")[0], Token::Number(2147483647));
+        for invalid in ["1.5", "1.2.3", "2147483648"] {
+            assert!(matches!(
+                Lexer::new(invalid).tokenise(),
+                Err(RosellaError::InvalidNumber(text, _)) if text == invalid
+            ));
+        }
         assert!(matches!(
-            Lexer::new("1.2.3").tokenise(),
-            Err(RosellaError::InvalidNumber(_, _))
+            Lexer::new(".5").tokenise(),
+            Err(RosellaError::InvalidPunctuation('.', _))
         ));
     }
 

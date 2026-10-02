@@ -1,4 +1,4 @@
-use super::backend::{Arg, Arith, Backend, Condition, Part, Test, Transfer};
+use super::backend::{Arg, Arith, Backend, Condition, Part, ReturnCheck, Test, Transfer};
 use super::{error, indent};
 use crate::error::RosellaError;
 use crate::syntax::BinaryOp;
@@ -59,22 +59,21 @@ impl Backend for Batch {
         format!("rosella_{}_{}", function, parameter)
     }
 
-    fn let_int(&self, name: &str, value: &Arith) -> String {
+    fn assign_int(&self, name: &str, value: &Arith) -> String {
         format!("set /a \"{}={}\"\n", name, value.text)
     }
 
-    fn let_str(&self, name: &str, value: &[Part]) -> Result<String, RosellaError> {
+    fn assign_str(&self, name: &str, value: &[Part]) -> Result<String, RosellaError> {
         Ok(format!("set \"{}={}\"\n", name, quoted(value)?))
     }
 
-    fn condition(&mut self, test: Test) -> Result<Condition, RosellaError> {
+    fn condition(&mut self, test: Test, mut setup: String) -> Result<Condition, RosellaError> {
         match test {
             Test::Int {
                 left,
                 operator,
                 right,
             } => {
-                let mut setup = String::new();
                 let left = self.int_operand(&left, &mut setup);
                 let right = self.int_operand(&right, &mut setup);
                 let operator = match operator {
@@ -102,13 +101,10 @@ impl Backend for Batch {
                     BinaryOp::LessThan => format!("\"{}\" LSS \"{}\"", left, right),
                     _ => format!("\"{}\" GTR \"{}\"", left, right),
                 };
-                Ok(Condition {
-                    setup: String::new(),
-                    test,
-                })
+                Ok(Condition { setup, test })
             }
             Test::File { negate, path } => Ok(Condition {
-                setup: String::new(),
+                setup,
                 test: format!(
                     "{}exist \"{}\"",
                     if negate { "not " } else { "" },
@@ -136,7 +132,7 @@ impl Backend for Batch {
     }
 
     // Loops As Subroutines
-    fn while_loop(&mut self, condition: Condition, body: String) -> String {
+    fn while_loop(&mut self, condition: Condition, body: String, check: ReturnCheck) -> String {
         let label = format!("rosella_while{}", self.next_index());
 
         self.subroutines.push_str(&format!(
@@ -147,7 +143,15 @@ impl Backend for Batch {
             body = body,
         ));
 
-        call(&label)
+        let mut output = call(&label);
+        output.push_str(match check {
+            ReturnCheck::None => "",
+            ReturnCheck::Propagate => "if defined rosella_returning goto :eof\n",
+            ReturnCheck::Clear => {
+                "if defined rosella_returning (set \"rosella_returning=\" & goto :eof)\n"
+            }
+        });
+        output
     }
 
     // Pass Arguments Through Variables
@@ -161,7 +165,12 @@ impl Backend for Batch {
             )));
         }
         output.push_str(&body);
-        output.push_str(&indent("goto :eof\n"));
+
+        // Skip A Repeated Final Jump
+        let jump = indent("goto :eof\n");
+        if !body.ends_with(&jump) {
+            output.push_str(&jump);
+        }
         output.push('\n');
 
         self.subroutines.push_str(&output);
@@ -180,6 +189,19 @@ impl Backend for Batch {
         }
         output.push_str(&call(name));
         Ok(output)
+    }
+
+    fn capture(&self, temporary: &str, _local: bool) -> String {
+        format!("set \"{}=!rosella_return!\"\n", temporary)
+    }
+
+    // Leave Every Enclosing Loop
+    fn return_from_function(&self, nested_in_loop: bool) -> String {
+        if nested_in_loop {
+            "set \"rosella_returning=1\"\ngoto :eof\n".to_string()
+        } else {
+            "goto :eof\n".to_string()
+        }
     }
 
     fn print(&self, text: &[Part]) -> Result<String, RosellaError> {
@@ -262,7 +284,7 @@ impl Backend for Batch {
     }
 
     // Clear Before Prompt
-    fn read(&self, prompt: &[Part], variable: &str) -> Result<String, RosellaError> {
+    fn read(&self, prompt: &[Part], variable: &str, _local: bool) -> Result<String, RosellaError> {
         Ok(format!(
             "set \"{variable}=\"\nset /p \"{variable}={prompt}\"\n",
             variable = variable,

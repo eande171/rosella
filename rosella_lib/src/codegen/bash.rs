@@ -1,4 +1,4 @@
-use super::backend::{Arg, Arith, Backend, Condition, Part, Test, Transfer};
+use super::backend::{Arg, Arith, Backend, Condition, Part, ReturnCheck, Test, Transfer};
 use super::indent;
 use crate::error::RosellaError;
 use crate::syntax::BinaryOp;
@@ -14,18 +14,18 @@ impl Backend for Bash {
         ":\n"
     }
 
-    fn let_int(&self, name: &str, value: &Arith) -> String {
+    fn assign_int(&self, name: &str, value: &Arith) -> String {
         match value.literal {
             Some(literal) => format!("{}={}\n", name, literal),
             None => format!("{}=$(( {} ))\n", name, value.text),
         }
     }
 
-    fn let_str(&self, name: &str, value: &[Part]) -> Result<String, RosellaError> {
+    fn assign_str(&self, name: &str, value: &[Part]) -> Result<String, RosellaError> {
         Ok(format!("{}={}\n", name, quote(value, false)))
     }
 
-    fn condition(&mut self, test: Test) -> Result<Condition, RosellaError> {
+    fn condition(&mut self, test: Test, setup: String) -> Result<Condition, RosellaError> {
         let test = match test {
             Test::Int {
                 left,
@@ -54,9 +54,12 @@ impl Backend for Bash {
             ),
         };
 
+        // Setup Runs Inside The Condition List
+        let setup: String = setup.lines().map(|line| format!("{}; ", line)).collect();
+
         Ok(Condition {
             setup: String::new(),
-            test,
+            test: setup + &test,
         })
     }
 
@@ -75,7 +78,7 @@ impl Backend for Bash {
         output
     }
 
-    fn while_loop(&mut self, condition: Condition, body: String) -> String {
+    fn while_loop(&mut self, condition: Condition, body: String, _check: ReturnCheck) -> String {
         format!("while {}; do\n{}done\n", condition.test, body)
     }
 
@@ -88,7 +91,8 @@ impl Backend for Bash {
                 index + 1
             )));
         }
-        output.push_str(&body);
+        // Final Return Is Implied
+        output.push_str(body.strip_suffix(&indent("return\n")).unwrap_or(&body));
         output.push_str("}\n");
         output
     }
@@ -104,6 +108,15 @@ impl Backend for Bash {
         }
         output.push('\n');
         Ok(output)
+    }
+
+    fn capture(&self, temporary: &str, local: bool) -> String {
+        let keyword = if local { "local " } else { "" };
+        format!("{}{}=\"${{rosella_return}}\"\n", keyword, temporary)
+    }
+
+    fn return_from_function(&self, _nested_in_loop: bool) -> String {
+        "return\n".to_string()
     }
 
     fn print(&self, text: &[Part]) -> Result<String, RosellaError> {
@@ -155,9 +168,15 @@ impl Backend for Bash {
         ))
     }
 
-    fn read(&self, prompt: &[Part], variable: &str) -> Result<String, RosellaError> {
+    fn read(&self, prompt: &[Part], variable: &str, local: bool) -> Result<String, RosellaError> {
+        let declare = if local {
+            format!("local {}\n", variable)
+        } else {
+            String::new()
+        };
         Ok(format!(
-            "read -r -p {} {}\n",
+            "{}read -r -p {} {}\n",
+            declare,
             quote(prompt, false),
             variable
         ))

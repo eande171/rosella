@@ -54,6 +54,14 @@ pub enum Arg {
     Value(Vec<Part>),
 }
 
+// Return From Inside A Loop
+#[derive(Clone, Copy, PartialEq)]
+pub enum ReturnCheck {
+    None,
+    Propagate,
+    Clear,
+}
+
 #[derive(Clone, Copy)]
 pub enum Transfer {
     Copy,
@@ -73,14 +81,16 @@ pub trait Backend {
         parameter.to_string()
     }
 
-    fn let_int(&self, name: &str, value: &Arith) -> String;
-    fn let_str(&self, name: &str, value: &[Part]) -> Result<String, RosellaError>;
+    fn assign_int(&self, name: &str, value: &Arith) -> String;
+    fn assign_str(&self, name: &str, value: &[Part]) -> Result<String, RosellaError>;
 
-    fn condition(&mut self, test: Test) -> Result<Condition, RosellaError>;
+    fn condition(&mut self, test: Test, setup: String) -> Result<Condition, RosellaError>;
     fn if_chain(&self, branches: Vec<(Condition, String)>, otherwise: Option<String>) -> String;
-    fn while_loop(&mut self, condition: Condition, body: String) -> String;
+    fn while_loop(&mut self, condition: Condition, body: String, check: ReturnCheck) -> String;
     fn function(&mut self, name: &str, parameters: &[String], body: String) -> String;
     fn call(&self, name: &str, args: &[Arg]) -> Result<String, RosellaError>;
+    fn capture(&self, temporary: &str, local: bool) -> String;
+    fn return_from_function(&self, nested_in_loop: bool) -> String;
 
     fn print(&self, text: &[Part]) -> Result<String, RosellaError>;
     fn cd(&self, path: &[Part]) -> Result<String, RosellaError>;
@@ -93,6 +103,6 @@ pub trait Backend {
         destination: &[Part],
     ) -> Result<String, RosellaError>;
     fn write(&self, path: &[Part], content: &[Part], append: bool) -> Result<String, RosellaError>;
-    fn read(&self, prompt: &[Part], variable: &str) -> Result<String, RosellaError>;
+    fn read(&self, prompt: &[Part], variable: &str, local: bool) -> Result<String, RosellaError>;
     fn exit(&self, code: &Arith, depth: usize) -> String;
 }

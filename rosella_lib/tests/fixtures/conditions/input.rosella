@@ -6,6 +6,3 @@ if name != "Alice" { print("not Alice"); } else { print("Alice"); }
 if name == "Bob" { print("Bob"); }
 if "apple" < "banana" { print("apple first"); }
 if not_exists("missing.txt") { print("no file"); }
-
-/* Explicit Type Form */
-if int(x > 1) { print("explicit"); }

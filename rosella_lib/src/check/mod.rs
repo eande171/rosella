@@ -2,30 +2,38 @@ mod names;
 
 use std::collections::HashMap;
 
-use crate::builtins::{self, Builtin};
+use crate::builtins::{self, Builtin, Signature};
 use crate::error::RosellaError;
 use crate::syntax::{Expr, OS, Param, Stmt, Type};
 
-// Resolve Condition Types
+// Resolve Types
 pub fn check(statements: &mut [Stmt], os: OS) -> Result<(), RosellaError> {
     let mut checker = Checker {
         os,
         variables: HashMap::new(),
         functions: HashMap::new(),
         parameters: HashMap::new(),
+        returns: None,
     };
 
     checker.declare(statements, &HashMap::new())?;
     checker.check_block(statements)
 }
 
-type Parameters = HashMap<String, Option<Type>>;
+type Parameters = HashMap<String, Type>;
+
+struct Function {
+    parameters: Vec<Type>,
+    returns: Option<Type>,
+}
 
 struct Checker {
     os: OS,
     variables: HashMap<String, Type>,
-    functions: HashMap<String, Vec<Option<Type>>>,
+    functions: HashMap<String, Function>,
     parameters: Parameters,
+    // Outer None Means Top Level
+    returns: Option<Option<Type>>,
 }
 
 impl Checker {
@@ -44,17 +52,22 @@ impl Checker {
                     name,
                     ..
                 } => {
-                    if *variable_type == Type::File {
+                    if parameters.contains_key(name) {
                         return Err(error(format!(
-                            "'let file {}' is not supported; the file type is only for conditions",
-                            name
+                            "'{}' is already a parameter; assign to it with {} = ...",
+                            name, name
                         )));
                     }
-                    self.declare_variable(name, *variable_type, parameters)?;
-                }
-                Stmt::Expression(Expr::Call { name, args }) if name == "read" => {
-                    if let [_, Expr::Identifier(variable)] = args.as_slice() {
-                        self.declare_variable(variable, Type::Str, parameters)?;
+                    names::check_variable_name(name)?;
+                    if self
+                        .variables
+                        .insert(name.clone(), *variable_type)
+                        .is_some()
+                    {
+                        return Err(error(format!(
+                            "'{}' is declared more than once; assign to it with {} = ...",
+                            name, name
+                        )));
                     }
                 }
                 Stmt::If {
@@ -71,10 +84,11 @@ impl Checker {
                 Stmt::With { os, body } if *os == self.os => self.declare(body, parameters)?,
                 Stmt::Function {
                     name,
+                    return_type,
                     parameters: function_parameters,
                     body,
                 } => {
-                    self.declare_function(name, function_parameters)?;
+                    self.declare_function(name, *return_type, function_parameters)?;
                     self.declare(body, &parameter_types(function_parameters))?;
                 }
                 _ => {}
@@ -84,7 +98,12 @@ impl Checker {
         Ok(())
     }
 
-    fn declare_function(&mut self, name: &str, parameters: &[Param]) -> Result<(), RosellaError> {
+    fn declare_function(
+        &mut self,
+        name: &str,
+        returns: Option<Type>,
+        parameters: &[Param],
+    ) -> Result<(), RosellaError> {
         if builtins::find(name).is_some() {
             return Err(error(format!(
                 "Function '{}' has the same name as a built-in function",
@@ -93,21 +112,27 @@ impl Checker {
         }
         names::check_function_name(name)?;
 
-        for parameter in parameters {
+        for (index, parameter) in parameters.iter().enumerate() {
             names::check_variable_name(&parameter.name)?;
-            if parameter.param_type == Some(Type::File) {
+            if parameters[..index]
+                .iter()
+                .any(|other| other.name == parameter.name)
+            {
                 return Err(error(format!(
-                    "Parameters of '{}' cannot use the file type; it is only for conditions",
-                    name
+                    "Function '{}' has two parameters named '{}'",
+                    name, parameter.name
                 )));
             }
         }
 
-        let types = parameters
-            .iter()
-            .map(|parameter| parameter.param_type)
-            .collect();
-        if self.functions.insert(name.to_string(), types).is_some() {
+        let function = Function {
+            parameters: parameters
+                .iter()
+                .map(|parameter| parameter.param_type)
+                .collect(),
+            returns,
+        };
+        if self.functions.insert(name.to_string(), function).is_some() {
             return Err(error(format!(
                 "Function '{}' is defined more than once",
                 name
@@ -115,34 +140,6 @@ impl Checker {
         }
 
         Ok(())
-    }
-
-    fn declare_variable(
-        &mut self,
-        name: &str,
-        variable_type: Type,
-        parameters: &Parameters,
-    ) -> Result<(), RosellaError> {
-        names::check_variable_name(name)?;
-
-        // Parameters Stay Local
-        if let Some(parameter_type) = parameters.get(name) {
-            return match parameter_type {
-                Some(parameter_type) if *parameter_type != variable_type => Err(error(format!(
-                    "Parameter '{}' is {} but is assigned as {}",
-                    name, parameter_type, variable_type
-                ))),
-                _ => Ok(()),
-            };
-        }
-
-        match self.variables.insert(name.to_string(), variable_type) {
-            Some(previous) if previous != variable_type => Err(error(format!(
-                "'{}' is declared as both {} and {}; a variable keeps one type",
-                name, previous, variable_type
-            ))),
-            _ => Ok(()),
-        }
     }
 
     // Statements
@@ -158,15 +155,24 @@ impl Checker {
         match statement {
             Stmt::Let {
                 variable_type,
+                name,
                 value,
-                ..
             } => {
                 let value_type = self.value_type(value)?;
-                if *variable_type == Type::Int && value_type == Some(Type::Str) {
-                    return Err(error(
-                        "A str value cannot be stored in an int; only numbers and int variables can",
-                    ));
-                }
+                assignable(*variable_type, value_type, &format!("'{}' is int", name))
+            }
+            Stmt::Assign {
+                variable_type,
+                name,
+                value,
+            } => {
+                let target = self.variable_type(name)?;
+                assignable(
+                    target,
+                    self.value_type(value)?,
+                    &format!("'{}' is int", name),
+                )?;
+                *variable_type = Some(target);
                 Ok(())
             }
             Stmt::If {
@@ -175,7 +181,7 @@ impl Checker {
                 then_branch,
                 else_branch,
             } => {
-                *condition_type = Some(self.condition_type(condition, *condition_type)?);
+                *condition_type = Some(self.condition_type(condition)?);
                 self.check_block(then_branch)?;
                 if let Some(else_branch) = else_branch {
                     self.check_block(else_branch)?;
@@ -187,19 +193,33 @@ impl Checker {
                 condition,
                 body,
             } => {
-                *condition_type = Some(self.condition_type(condition, *condition_type)?);
+                *condition_type = Some(self.condition_type(condition)?);
                 self.check_block(body)
             }
             Stmt::With { os, body } if *os == self.os => self.check_block(body),
             Stmt::With { .. } => Ok(()),
             Stmt::Function {
-                parameters, body, ..
+                name,
+                return_type,
+                parameters,
+                body,
             } => {
-                let outer = std::mem::replace(&mut self.parameters, parameter_types(parameters));
+                if return_type.is_some() && !always_returns(body, self.os) {
+                    return Err(error(format!(
+                        "Function '{}' must end with a return, or return in both branches of a final if and else",
+                        name
+                    )));
+                }
+
+                let outer_parameters =
+                    std::mem::replace(&mut self.parameters, parameter_types(parameters));
+                let outer_returns = self.returns.replace(*return_type);
                 let result = self.check_block(body);
-                self.parameters = outer;
+                self.parameters = outer_parameters;
+                self.returns = outer_returns;
                 result
             }
+            Stmt::Return(value) => self.check_return(value.as_ref()),
             Stmt::Expression(Expr::Call { name, args }) => self.check_call(name, args),
             Stmt::Expression(expr) => Err(error(format!(
                 "{} does nothing on its own; only function calls can be used as statements",
@@ -209,63 +229,83 @@ impl Checker {
         }
     }
 
-    fn check_call(&self, name: &str, args: &[Expr]) -> Result<(), RosellaError> {
-        if let Some(parameter_types) = self.functions.get(name) {
-            if args.len() != parameter_types.len() {
-                return Err(error(format!(
-                    "Function '{}' takes {} argument(s) but was given {}",
-                    name,
-                    parameter_types.len(),
-                    args.len()
-                )));
-            }
+    fn check_return(&self, value: Option<&Expr>) -> Result<(), RosellaError> {
+        let Some(returns) = self.returns else {
+            return Err(error(
+                "return can only be used inside a function; use exit() to stop the script",
+            ));
+        };
 
-            for (index, (parameter_type, arg)) in parameter_types.iter().zip(args).enumerate() {
-                // Reject Text As Int
-                if *parameter_type == Some(Type::Int) && self.value_type(arg)? == Some(Type::Str) {
-                    return Err(error(format!(
-                        "Argument {} of '{}' must be int but is str",
-                        index + 1,
-                        name
-                    )));
-                }
-            }
-            return Ok(());
+        match (returns, value) {
+            (None, None) => Ok(()),
+            (None, Some(_)) => Err(error(
+                "This function has no return type; declare one like fn int name() to return a value",
+            )),
+            (Some(returns), None) => Err(error(format!(
+                "This function must return a {} value",
+                returns
+            ))),
+            (Some(returns), Some(value)) => assignable(
+                returns,
+                self.value_type(value)?,
+                "This function returns int",
+            ),
+        }
+    }
+
+    fn check_call(&self, name: &str, args: &[Expr]) -> Result<(), RosellaError> {
+        if self.functions.contains_key(name) {
+            return self.check_arguments(name, args);
         }
 
         let signature = self.builtin(name, args)?;
-        if signature.returns.is_some() {
+
+        // Read Can Discard Its Input
+        if signature.returns.is_some() && signature.builtin != Builtin::Read {
             return Err(error(format!(
                 "{}() returns a value and cannot be used as a statement",
                 name
             )));
         }
 
-        // Skip Read Target
-        let used = match (signature.builtin, args) {
-            (Builtin::Read, [prompt, Expr::Identifier(_)]) => std::slice::from_ref(prompt),
-            (Builtin::Read, _) => {
-                return Err(error(format!(
-                    "read() takes a prompt and a variable name, like {}",
-                    signature.usage
-                )));
-            }
-            _ => args,
-        };
-
-        for arg in used {
+        for arg in args {
             self.value_type(arg)?;
         }
 
         Ok(())
     }
 
-    fn builtin(
-        &self,
-        name: &str,
-        args: &[Expr],
-    ) -> Result<&'static builtins::Signature, RosellaError> {
+    fn check_arguments(&self, name: &str, args: &[Expr]) -> Result<(), RosellaError> {
+        let parameters = &self.functions[name].parameters;
+        if args.len() != parameters.len() {
+            return Err(error(format!(
+                "Function '{}' takes {} argument(s) but was given {}",
+                name,
+                parameters.len(),
+                args.len()
+            )));
+        }
+
+        for (index, (parameter, arg)) in parameters.iter().zip(args).enumerate() {
+            assignable(
+                *parameter,
+                self.value_type(arg)?,
+                &format!("Argument {} of '{}' is int", index + 1, name),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn builtin(&self, name: &str, args: &[Expr]) -> Result<&'static Signature, RosellaError> {
         let Some(signature) = builtins::find(name) else {
+            // Older Typed Condition Form
+            if matches!(name, "int" | "str" | "file") {
+                return Err(error(format!(
+                    "{}(...) is no longer needed; write the comparison directly, like if x < 10",
+                    name
+                )));
+            }
             return Err(error(format!("Unknown function '{}'", name)));
         };
 
@@ -283,13 +323,13 @@ impl Checker {
 
     // Types
 
-    fn variable_type(&self, name: &str) -> Result<Option<Type>, RosellaError> {
+    fn variable_type(&self, name: &str) -> Result<Type, RosellaError> {
         if let Some(parameter_type) = self.parameters.get(name) {
             return Ok(*parameter_type);
         }
 
         match self.variables.get(name) {
-            Some(variable_type) => Ok(Some(*variable_type)),
+            Some(variable_type) => Ok(*variable_type),
             None => Err(error(format!(
                 "Unknown variable '{}'; declare it with let before using it",
                 name
@@ -297,11 +337,10 @@ impl Checker {
         }
     }
 
-    // None Means Unknown
-    fn expr_type(&self, expr: &Expr) -> Result<Option<Type>, RosellaError> {
+    fn expr_type(&self, expr: &Expr) -> Result<Type, RosellaError> {
         match expr {
-            Expr::Number(_) => Ok(Some(Type::Int)),
-            Expr::String(_) => Ok(Some(Type::Str)),
+            Expr::Number(_) => Ok(Type::Int),
+            Expr::String(_) => Ok(Type::Str),
             Expr::Identifier(name) => self.variable_type(name),
             Expr::Binary {
                 left,
@@ -314,20 +353,23 @@ impl Checker {
                     ));
                 }
                 for side in [left, right] {
-                    if self.value_type(side)? == Some(Type::Str) {
+                    if self.value_type(side)? == Type::Str {
                         return Err(error(
                             "Arithmetic needs int values; use concat() to join strings",
                         ));
                     }
                 }
-                Ok(Some(Type::Int))
+                Ok(Type::Int)
             }
             Expr::Call { name, args } => {
-                if self.functions.contains_key(name) {
-                    return Err(error(format!(
-                        "Function '{}' does not return a value",
-                        name
-                    )));
+                if let Some(function) = self.functions.get(name) {
+                    self.check_arguments(name, args)?;
+                    return function.returns.ok_or_else(|| {
+                        error(format!(
+                            "Function '{}' does not return a value; declare a return type like fn int {}()",
+                            name, name
+                        ))
+                    });
                 }
 
                 let signature = self.builtin(name, args)?;
@@ -338,15 +380,15 @@ impl Checker {
                 for arg in args {
                     self.value_type(arg)?;
                 }
-                Ok(Some(returns))
+                Ok(returns)
             }
         }
     }
 
     // File Checks Only In Conditions
-    fn value_type(&self, expr: &Expr) -> Result<Option<Type>, RosellaError> {
+    fn value_type(&self, expr: &Expr) -> Result<Type, RosellaError> {
         match self.expr_type(expr)? {
-            Some(Type::File) => Err(error(format!(
+            Type::File => Err(error(format!(
                 "{} can only be used as an if or while condition",
                 describe(expr)
             ))),
@@ -354,38 +396,26 @@ impl Checker {
         }
     }
 
-    fn condition_type(
-        &self,
-        condition: &Expr,
-        explicit: Option<Type>,
-    ) -> Result<Type, RosellaError> {
-        let comparison =
-            matches!(condition, Expr::Binary { operator, .. } if operator.is_comparison());
-
-        let inferred = match condition {
-            Expr::Binary { left, right, .. } if comparison => {
-                match (self.value_type(left)?, self.value_type(right)?) {
-                    (Some(left), Some(right)) if left != right && explicit.is_none() => {
-                        return Err(error(format!(
-                            "This condition compares {} with {}; both sides need the same type",
-                            left, right
-                        )));
-                    }
-                    (Some(known), _) | (None, Some(known)) => Some(known),
-                    (None, None) => None,
-                }
+    fn condition_type(&self, condition: &Expr) -> Result<Type, RosellaError> {
+        if let Expr::Binary {
+            left,
+            operator,
+            right,
+        } = condition
+            && operator.is_comparison()
+        {
+            let (left, right) = (self.value_type(left)?, self.value_type(right)?);
+            if left != right {
+                return Err(error(format!(
+                    "This condition compares {} with {}; both sides need the same type",
+                    left, right
+                )));
             }
-            _ => self.expr_type(condition)?,
-        };
+            return Ok(left);
+        }
 
-        // Explicit Type Wins
-        match (explicit, inferred) {
-            (Some(explicit), _) => Ok(explicit),
-            (None, Some(Type::File)) => Ok(Type::File),
-            (None, Some(inferred)) if comparison => Ok(inferred),
-            (None, None) if comparison => Err(error(
-                "Cannot tell whether this condition compares numbers or text; give the parameter a type like fn f(int x), or write int(...) or str(...)",
-            )),
+        match self.expr_type(condition)? {
+            Type::File => Ok(Type::File),
             _ => Err(error(
                 "A condition needs a comparison like x < 10 or a file check like exists(\"notes.txt\")",
             )),
@@ -397,6 +427,27 @@ impl Checker {
 
 fn error(message: impl Into<String>) -> RosellaError {
     RosellaError::compiler(message)
+}
+
+// Numbers Can Become Text
+fn assignable(target: Type, value: Type, context: &str) -> Result<(), RosellaError> {
+    if target == Type::Int && value == Type::Str {
+        return Err(error(format!("{} and cannot take a str value", context)));
+    }
+    Ok(())
+}
+
+fn always_returns(statements: &[Stmt], os: OS) -> bool {
+    statements.iter().any(|statement| match statement {
+        Stmt::Return(_) => true,
+        Stmt::If {
+            then_branch,
+            else_branch: Some(else_branch),
+            ..
+        } => always_returns(then_branch, os) && always_returns(else_branch, os),
+        Stmt::With { os: with_os, body } if *with_os == os => always_returns(body, os),
+        _ => false,
+    })
 }
 
 fn describe(expr: &Expr) -> String {
@@ -454,8 +505,12 @@ mod tests {
             Type::Int
         );
         assert_eq!(
-            condition_type("read(\"Name: \", name);\nif name == \"Bob\" { }"),
+            condition_type("if read(\"Name: \") == \"Bob\" { }"),
             Type::Str
+        );
+        assert_eq!(
+            condition_type("fn int f() { return 1; }\nif f() > 0 { }"),
+            Type::Int
         );
     }
 
@@ -468,59 +523,105 @@ mod tests {
     }
 
     #[test]
-    fn parameters() {
-        assert_eq!(
-            condition_type(
-                "fn f(int a) { }\nfn g(int a) { if a > 1 { } }\nlet int z = 0;\nif z > 1 { }"
-            ),
-            Type::Int
-        );
-        assert_eq!(
-            condition_type("fn f(a) { if a == \"x\" { } }\nlet int z = 0;\nif z > 1 { }"),
-            Type::Int
-        );
-        assert!(check_error("fn f(a, b) { if a == b { } }").contains("Cannot tell"));
-        assert!(checked("fn f(a, b) { if int(a == b) { } }").is_ok());
-        assert!(check_error("fn f(int a) { }\nf(\"x\");").contains("must be int"));
-        assert!(checked("fn f(str a) { }\nf(5);").is_ok());
+    fn assignment_fills_in_its_type() {
+        let ast = checked("let int x = 1;\nx = x + 1;").unwrap();
+        assert!(matches!(
+            &ast[1],
+            Stmt::Assign {
+                variable_type: Some(Type::Int),
+                ..
+            }
+        ));
+        assert!(checked("fn f(int a) { a = a + 1; }").is_ok());
     }
 
     #[test]
-    fn explicit_types_still_work() {
-        assert_eq!(
-            condition_type("let int x = 1;\nif str(x == \"1\") { }"),
-            Type::Str
+    fn returns() {
+        assert!(
+            checked("fn int add(int a, int b) { return a + b; }\nlet int x = add(1, 2) * 3;")
+                .is_ok()
         );
+        assert!(
+            checked(
+                "fn str name(int n) { if n == 1 { return \"one\"; } else { return \"many\"; } }"
+            )
+            .is_ok()
+        );
+        assert!(checked("fn str label(int n) { return n; }").is_ok());
+        assert!(checked("fn stop() { return; }\nstop();").is_ok());
+        assert!(checked("fn int add(int a) { return a; }\nadd(1);").is_ok());
+        assert!(checked("let str name = read(\"Name: \");\nread(\"Press enter\");").is_ok());
+    }
+
+    #[test]
+    fn return_mistakes_are_reported() {
+        assert!(check_error("return;").contains("only be used inside a function"));
+        assert!(check_error("fn f() { return 1; }").contains("no return type"));
+        assert!(check_error("fn int f() { return; }").contains("must return a int"));
+        assert!(
+            check_error("fn int f() { return \"a\"; }")
+                .contains("returns int and cannot take a str")
+        );
+        assert!(check_error("fn int f() { }").contains("must end with a return"));
+        assert!(
+            check_error("fn int f(int a) { if a > 1 { return 1; } }")
+                .contains("must end with a return")
+        );
+        assert!(check_error("fn f() { }\nlet int x = f();").contains("does not return a value"));
+    }
+
+    #[test]
+    fn declaration_mistakes_are_reported() {
+        assert!(check_error("let int x = 1;\nlet int x = 2;").contains("declared more than once"));
+        assert!(
+            check_error("let int x = 1;\nlet str x = \"a\";").contains("declared more than once")
+        );
+        assert!(check_error("fn f(int a) { let int a = 1; }").contains("already a parameter"));
+        assert!(check_error("y = 1;").contains("Unknown variable 'y'"));
+        assert!(check_error("fn f(int a, str a) { }").contains("two parameters"));
     }
 
     #[test]
     fn type_mistakes_are_reported() {
         assert!(check_error("print(y);").contains("Unknown variable 'y'"));
-        assert!(check_error("let int x = 1;\nlet str x = \"a\";").contains("both int and str"));
         assert!(check_error("let int x = 1;\nif x == \"a\" { }").contains("compares int with str"));
         assert!(
             check_error("let str s = \"a\";\nlet int n = s + 1;").contains("Arithmetic needs int")
         );
         assert!(
             check_error("let str s = \"a\";\nlet int n = s;")
-                .contains("cannot be stored in an int")
+                .contains("'n' is int and cannot take a str")
         );
+        assert!(check_error("let int n = 0;\nn = \"a\";").contains("cannot take a str"));
         assert!(check_error("let int x = 1;\nif x { }").contains("needs a comparison"));
-        assert!(check_error("fn f(int a) { let str a = \"x\"; }").contains("Parameter 'a' is int"));
         assert!(
             check_error("let str s = exists(\"a\");")
                 .contains("only be used as an if or while condition")
+        );
+        assert!(check_error("fn f(int a) { }\nf(\"x\");").contains("Argument 1 of 'f' is int"));
+        assert!(checked("fn f(str a) { }\nf(5);").is_ok());
+        assert!(check_error("let int n = read(\"N: \");").contains("cannot take a str"));
+    }
+
+    #[test]
+    fn older_typed_conditions_explain_the_change() {
+        assert!(
+            check_error("let int x = 1;\nif int(x < 10) { }")
+                .contains("int(...) is no longer needed")
         );
     }
 
     #[test]
     fn call_mistakes_are_reported() {
-        assert!(check_error("fn add(a) { }\nlet int r = add(1);").contains("does not return"));
         assert!(check_error("get_cwd();").contains("cannot be used as a statement"));
         assert!(check_error("let str s = print(1);").contains("cannot be used as a value"));
-        assert!(check_error("fn f(a) { }\nf();").contains("takes 1 argument"));
+        assert!(check_error("fn f(int a) { }\nf();").contains("takes 1 argument"));
+        assert!(
+            check_error("fn int f(int a) { return a; }\nlet int x = f();")
+                .contains("takes 1 argument")
+        );
         assert!(check_error("copy(\"a\");").contains("use it like copy("));
-        assert!(check_error("read(\"a\", \"b\");").contains("prompt and a variable name"));
+        assert!(check_error("read(\"a\", name);").contains("use it like let str name = read("));
         assert!(check_error("nope();").contains("Unknown function"));
         assert!(check_error("echo(1);").contains("Unknown function"));
         assert!(check_error("x;").contains("does nothing"));
@@ -528,10 +629,10 @@ mod tests {
 
     #[test]
     fn naming_mistakes_are_reported() {
-        assert!(check_error("fn print(a) { }").contains("built-in"));
+        assert!(check_error("fn print(int a) { }").contains("built-in"));
         assert!(check_error("fn f() { }\nfn f() { }").contains("more than once"));
         assert!(check_error("let str path = \"x\";").contains("environment variable"));
-        assert!(check_error("fn f(PATH) { }").contains("environment variable"));
+        assert!(check_error("fn f(str PATH) { }").contains("environment variable"));
         assert!(check_error("let int rosella_x = 1;").contains("reserved"));
     }
 

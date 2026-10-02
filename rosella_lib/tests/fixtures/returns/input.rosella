@@ -1,0 +1,39 @@
+fn int add(int a, int b) {
+    return a + b;
+}
+
+fn str label(int n) {
+    if n == 1 { return "one"; }
+    return concat("many: ", n);
+}
+
+/* Return From Inside A Loop */
+fn int first_square_over(int limit) {
+    let int i = 0;
+    while i < 100 {
+        if i * i > limit { return i; }
+        i = i + 1;
+    }
+    return -1;
+}
+
+fn int double_sum(int a, int b) {
+    return add(a, b) * 2;
+}
+
+let int total = add(1, 2);
+print("total: ", total);
+print("doubled: ", double_sum(2, 3));
+print(label(1), " / ", label(add(1, 1)));
+add(5, 5);
+
+if add(total, 1) == 4 { print("four"); }
+
+/* Condition Calls Run Every Pass */
+let int n = 0;
+while add(n, 0) < 3 { n = n + 1; }
+print("n: ", n);
+
+print("first square over 50: ", first_square_over(50));
+let int nested = add(add(1, 2), add(3, 4)) - 1;
+print("nested: ", nested);

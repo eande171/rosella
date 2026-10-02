@@ -39,7 +39,11 @@ impl fmt::Display for RosellaError {
                 span, character
             ),
             RosellaError::InvalidNumber(text, span) => {
-                write!(f, "{}: Cannot parse number: {}", span, text)
+                write!(
+                    f,
+                    "{}: {} is not a whole number that fits in an int",
+                    span, text
+                )
             }
             RosellaError::UnterminatedString(span) => {
                 write!(f, "{}: Expected '\"' to end string", span)

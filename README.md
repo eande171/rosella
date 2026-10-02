@@ -34,7 +34,7 @@ Given the nature of the transpiler, **Rosella** *does* have some syntactic quirk
 ## Larger Example
 An example of what more complicated **Rosella** code looks like:
 ```csharp
-fn add(x, y) {
+fn add(int x, int y) {
     let int result = x + y;
     print("Result: ", result);
 }
@@ -46,7 +46,7 @@ add(5, 6);
 let int x = 0;
 while x < 100 {
     print("Current value of x: ", x);
-    let int x = x + 1;
+    x = x + 1;
     print("secret_index_", x);
 }
 ```

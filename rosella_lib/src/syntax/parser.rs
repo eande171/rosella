@@ -96,28 +96,47 @@ impl Parser {
             Token::If => self.parse_if_stmt(),
             Token::With => self.parse_with_stmt(),
             Token::While => self.parse_while_stmt(),
+            Token::Return => self.parse_return_stmt(),
             Token::RawInstruction(_) => self.parse_raw_stmt(),
+            Token::Identifier(name) if self.peek_token() == &Token::Assign => {
+                let name = name.clone();
+                self.advance();
+                self.advance();
+                let value = self.parse_expression()?;
+                self.expect_statement_end()?;
+                Ok(Stmt::Assign {
+                    variable_type: None,
+                    name,
+                    value,
+                })
+            }
             _ => {
                 let expr = self.parse_expression()?;
-                // Report At Statement End
-                if self.current_token() != &Token::Semicolon {
-                    let span = match self
-                        .position
-                        .checked_sub(1)
-                        .and_then(|i| self.tokens.get(i))
-                    {
-                        Some(previous) => previous.span,
-                        None => self.current_span(),
-                    };
-                    return Err(RosellaError::ParseError(
-                        "Expected ';' after this statement".to_string(),
-                        span,
-                    ));
-                }
-                self.advance();
+                self.expect_statement_end()?;
                 Ok(Stmt::Expression(expr))
             }
         }
+    }
+
+    // Report At Statement End
+    fn expect_statement_end(&mut self) -> Result<(), RosellaError> {
+        if self.current_token() == &Token::Semicolon {
+            self.advance();
+            return Ok(());
+        }
+
+        let span = match self
+            .position
+            .checked_sub(1)
+            .and_then(|i| self.tokens.get(i))
+        {
+            Some(previous) => previous.span,
+            None => self.current_span(),
+        };
+        Err(RosellaError::ParseError(
+            "Expected ';' after this statement".to_string(),
+            span,
+        ))
     }
 
     fn parse_block(&mut self, context: &str) -> Result<Vec<Stmt>, RosellaError> {
@@ -148,7 +167,23 @@ impl Parser {
     fn parse_fn_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::Function)?;
 
-        let name = self.parse_identifier("fn", "function name")?;
+        // Optional Return Type
+        let type_span = self.current_span();
+        let first = self.parse_identifier("fn", "function name")?;
+        let (return_type, name) = match self.current_token() {
+            Token::Identifier(name) => {
+                let name = name.clone();
+                let return_type = Type::from_name(&first).ok_or_else(|| {
+                    RosellaError::ParseError(
+                        format!("Unknown return type '{}', expected int or str", first),
+                        type_span,
+                    )
+                })?;
+                self.advance();
+                (Some(return_type), name)
+            }
+            _ => (None, first),
+        };
 
         self.expect_token(&Token::LParen)?;
         let parameters = self.parse_parameters()?;
@@ -156,9 +191,23 @@ impl Parser {
 
         Ok(Stmt::Function {
             name,
+            return_type,
             parameters,
             body,
         })
+    }
+
+    fn parse_return_stmt(&mut self) -> Result<Stmt, RosellaError> {
+        self.expect_token(&Token::Return)?;
+
+        if self.current_token() == &Token::Semicolon {
+            self.advance();
+            return Ok(Stmt::Return(None));
+        }
+
+        let value = self.parse_expression()?;
+        self.expect_statement_end()?;
+        Ok(Stmt::Return(Some(value)))
     }
 
     fn parse_parameters(&mut self) -> Result<Vec<Param>, RosellaError> {
@@ -171,29 +220,26 @@ impl Parser {
 
         loop {
             let type_span = self.current_span();
-            let first = self.parse_identifier("fn", "parameter name")?;
+            let first = self.parse_identifier("fn", "parameter type")?;
 
-            // Typed Parameter
-            let parameter = if let Token::Identifier(name) = self.current_token() {
-                let name = name.clone();
-                let param_type = Type::from_name(&first).ok_or_else(|| {
-                    RosellaError::ParseError(
-                        format!("Unknown parameter type '{}', expected int or str", first),
-                        type_span,
-                    )
-                })?;
-                self.advance();
-                Param {
-                    name,
-                    param_type: Some(param_type),
-                }
-            } else {
-                Param {
-                    name: first,
-                    param_type: None,
-                }
+            let Token::Identifier(name) = self.current_token() else {
+                return Err(RosellaError::ParseError(
+                    format!(
+                        "Parameter '{}' needs a type, like int {} or str {}",
+                        first, first, first
+                    ),
+                    type_span,
+                ));
             };
-            parameters.push(parameter);
+            let name = name.clone();
+            let param_type = Type::from_name(&first).ok_or_else(|| {
+                RosellaError::ParseError(
+                    format!("Unknown parameter type '{}', expected int or str", first),
+                    type_span,
+                )
+            })?;
+            self.advance();
+            parameters.push(Param { name, param_type });
 
             match self.current_token() {
                 Token::Comma => self.advance(),
@@ -219,26 +265,10 @@ impl Parser {
 
         Type::from_name(&name).ok_or_else(|| {
             RosellaError::ParseError(
-                format!("Unknown type '{}', expected int, str or file", name),
+                format!("Unknown type '{}', expected int or str", name),
                 span,
             )
         })
-    }
-
-    // Explicit Type Form
-    fn parse_condition(&mut self) -> Result<(Option<Type>, Expr), RosellaError> {
-        if let Token::Identifier(name) = self.current_token()
-            && let Some(condition_type) = Type::from_name(name)
-            && self.peek_token() == &Token::LParen
-        {
-            self.advance();
-            self.advance();
-            let condition = self.parse_expression()?;
-            self.expect_token(&Token::RParen)?;
-            return Ok((Some(condition_type), condition));
-        }
-
-        Ok((None, self.parse_expression()?))
     }
 
     fn parse_let_stmt(&mut self) -> Result<Stmt, RosellaError> {
@@ -250,7 +280,7 @@ impl Parser {
 
         self.expect_token(&Token::Assign)?;
         let value = self.parse_expression()?;
-        self.expect_token(&Token::Semicolon)?;
+        self.expect_statement_end()?;
         Ok(Stmt::Let {
             variable_type,
             name,
@@ -261,7 +291,7 @@ impl Parser {
     fn parse_if_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::If)?;
 
-        let (condition_type, condition) = self.parse_condition()?;
+        let condition = self.parse_expression()?;
         let then_branch = self.parse_block("if")?;
 
         let else_branch = if self.current_token() == &Token::Else {
@@ -276,7 +306,7 @@ impl Parser {
         };
 
         Ok(Stmt::If {
-            condition_type,
+            condition_type: None,
             condition,
             then_branch,
             else_branch,
@@ -309,11 +339,11 @@ impl Parser {
     fn parse_while_stmt(&mut self) -> Result<Stmt, RosellaError> {
         self.expect_token(&Token::While)?;
 
-        let (condition_type, condition) = self.parse_condition()?;
+        let condition = self.parse_expression()?;
         let body = self.parse_block("while")?;
 
         Ok(Stmt::While {
-            condition_type,
+            condition_type: None,
             condition,
             body,
         })
@@ -544,7 +574,7 @@ mod tests {
             panic!()
         };
         assert_eq!(*operator, BinaryOp::GreaterThan);
-        assert_eq!(**right, Expr::Number(-4.0));
+        assert_eq!(**right, Expr::Number(-4));
         assert!(matches!(
             **left,
             Expr::Binary {
@@ -555,8 +585,8 @@ mod tests {
     }
 
     #[test]
-    fn conditions_with_and_without_types() {
-        let ast = parse("if x < 1 { }\nwhile str(a == b) { }\nif (y) { }").unwrap();
+    fn conditions_are_plain_expressions() {
+        let ast = parse("if x < 1 { }\nwhile (y) { }").unwrap();
         assert!(matches!(
             &ast[0],
             Stmt::If {
@@ -568,23 +598,16 @@ mod tests {
         assert!(matches!(
             &ast[1],
             Stmt::While {
-                condition_type: Some(Type::Str),
-                ..
-            }
-        ));
-        assert!(matches!(
-            &ast[2],
-            Stmt::If {
-                condition_type: None,
                 condition: Expr::Identifier(_),
                 ..
             }
         ));
+        assert!(parse("if int(x < 1) { }").is_ok());
     }
 
     #[test]
-    fn typed_and_untyped_parameters() {
-        let ast = parse("fn f(int a, b, str c) { }").unwrap();
+    fn parameters_need_types() {
+        let ast = parse("fn f(int a, str b) { }").unwrap();
         let Stmt::Function { parameters, .. } = &ast[0] else {
             panic!()
         };
@@ -593,29 +616,73 @@ mod tests {
             &vec![
                 Param {
                     name: "a".into(),
-                    param_type: Some(Type::Int)
+                    param_type: Type::Int
                 },
                 Param {
                     name: "b".into(),
-                    param_type: None
-                },
-                Param {
-                    name: "c".into(),
-                    param_type: Some(Type::Str)
+                    param_type: Type::Str
                 },
             ]
+        );
+        let message = parse("fn f(a) { }").unwrap_err().to_string();
+        assert!(
+            message.contains("line 1, column 6: Parameter 'a' needs a type"),
+            "{}",
+            message
         );
         assert!(
             parse("fn f(float a) { }")
                 .unwrap_err()
                 .to_string()
-                .contains("line 1, column 6")
+                .contains("Unknown parameter type 'float'")
         );
+        assert!(parse("fn f(file a) { }").is_err());
         assert!(
             parse("let float x = 1;")
                 .unwrap_err()
                 .to_string()
                 .contains("Unknown type 'float'")
+        );
+        assert!(parse("let file x = 1;").is_err());
+    }
+
+    #[test]
+    fn return_types_and_statements() {
+        let ast =
+            parse("fn int add(int a, int b) { return a + b; }\nfn greet() { return; }").unwrap();
+        assert!(matches!(
+            &ast[0],
+            Stmt::Function { return_type: Some(Type::Int), name, body, .. }
+                if name == "add" && matches!(body.as_slice(), [Stmt::Return(Some(_))])
+        ));
+        assert!(matches!(
+            &ast[1],
+            Stmt::Function { return_type: None, body, .. } if matches!(body.as_slice(), [Stmt::Return(None)])
+        ));
+        assert!(
+            parse("fn float add() { }")
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown return type 'float'")
+        );
+    }
+
+    #[test]
+    fn assignment() {
+        let ast = parse("x = x + 1;").unwrap();
+        assert!(matches!(
+            &ast[0],
+            Stmt::Assign {
+                variable_type: None,
+                value: Expr::Binary { .. },
+                ..
+            }
+        ));
+        assert!(
+            parse("x = 1")
+                .unwrap_err()
+                .to_string()
+                .contains("Expected ';'")
         );
     }
 
