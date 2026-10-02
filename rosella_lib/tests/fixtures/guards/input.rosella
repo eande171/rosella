@@ -1,0 +1,5 @@
+/* Stop On Empty Variable */
+let str empty = "";
+fn clean(dir) { remove_dir(dir, "build"); }
+clean(empty);
+print("SHOULD NOT PRINT");

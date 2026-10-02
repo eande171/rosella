@@ -1,0 +1,13 @@
+fn greet(name, greeting) { print(greeting, " ", name, "."); }
+greet("Bob Smith", "Hi!");
+let str n = "Ann & Lee (100%)";
+greet(n, "Hello");
+
+/* Parameters Stay Local */
+let int x = 5;
+fn bump(int x) {
+    let int x = x + 100;
+    print("inside: ", x);
+}
+bump(1);
+print("outside: ", x);

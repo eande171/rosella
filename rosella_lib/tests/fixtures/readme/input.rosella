@@ -1,0 +1,15 @@
+fn add(x, y) {
+    let int result = x + y;
+    print("Result: ", result);
+}
+
+add(1, 2);
+add(3, 4);
+add(5, 6);
+
+let int x = 0;
+while x < 100 {
+    print("Current value of x: ", x);
+    let int x = x + 1;
+    print("secret_index_", x);
+}

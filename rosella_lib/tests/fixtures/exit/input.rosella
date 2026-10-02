@@ -1,0 +1,10 @@
+fn stop() {
+    let int i = 0;
+    while i < 5 {
+        if i == 2 { exit(3); }
+        let int i = i + 1;
+    }
+}
+print("before");
+stop();
+print("SHOULD NOT PRINT");

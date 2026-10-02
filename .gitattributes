@@ -1,0 +1,4 @@
+# Line Endings For Shell Scripts
+*.sh text eol=lf
+*.out text eol=lf
+*.bat text eol=crlf

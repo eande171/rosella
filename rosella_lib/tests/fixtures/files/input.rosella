@@ -1,0 +1,21 @@
+let str project = "proj";
+make_dir(project, "build/out");
+make_dir(project, "build/out");
+write_file(path(project, "settings.ini"), concat("theme=dark\nname=", project, "!"));
+append_file(path(project, "settings.ini"), "more=100%");
+copy(path(project, "settings.ini"), path(project, "build", "copy.ini"));
+move(path(project, "build", "copy.ini"), path(project, "moved.ini"));
+if exists(project, "moved.ini") { print("moved"); }
+if not_exists(project, "build", "copy.ini") { print("copy gone"); }
+remove(path(project, "moved.ini"));
+remove_dir(project, "build");
+if not_exists(project, "build") { print("build removed"); }
+if 1 == 1 {
+    cd(project);
+    let str here = get_cwd();
+    if exists(here, "settings.ini") { print("in project"); }
+}
+with linux { |> cat settings.ini; }
+with windows { |> type settings.ini; }
+cd("..");
+remove_dir(project);

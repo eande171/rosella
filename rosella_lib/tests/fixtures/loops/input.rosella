@@ -1,0 +1,15 @@
+let int x = 1;
+let int i = 0;
+if x == 1 {
+    while i < 2 {
+        let int j = 0;
+        while j < 2 {
+            print(i, j);
+            let int j = j + 1;
+        }
+        let int i = i + 1;
+    }
+    print("then");
+} else {
+    print("ELSE SHOULD NOT RUN");
+}

@@ -1,0 +1,11 @@
+let int x = 2;
+if x == 1 { print("one"); } else if x + 1 == 3 { print("two"); } else { print("other"); }
+
+let str name = "Bob";
+if name != "Alice" { print("not Alice"); } else { print("Alice"); }
+if name == "Bob" { print("Bob"); }
+if "apple" < "banana" { print("apple first"); }
+if not_exists("missing.txt") { print("no file"); }
+
+/* Explicit Type Form */
+if int(x > 1) { print("explicit"); }

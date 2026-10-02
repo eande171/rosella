@@ -1,13 +1,13 @@
-use rosella::{Lexer, Parser, Compiler, Shell, OS};
+use rosella::{Compiler, Lexer, OS, Parser, Shell};
 
 use clap::{Parser as ClapParser, Subcommand, ValueEnum};
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 #[derive(ClapParser, Debug)]
 #[command(
     version = "0.1.0",
     about = "A Command Line Interface for the Rosella programming language."
-
 )]
 struct Cli {
     #[clap(subcommand)]
@@ -28,7 +28,7 @@ enum Commands {
 
         #[arg(short, long, value_enum)]
         shell: Option<TargetShell>,
-    }
+    },
 }
 
 #[derive(ValueEnum, Debug, Clone)]
@@ -43,32 +43,30 @@ enum TargetShell {
     Bash,
 }
 
-fn main() {
+fn main() -> ExitCode {
     let cli = Cli::parse();
     let current_os = std::env::consts::OS;
 
     match &cli.command {
-        Commands::Compile { 
-            input, 
-            output, 
-            target, 
-            shell 
+        Commands::Compile {
+            input,
+            output,
+            target,
+            shell,
         } => {
             let input_content = match std::fs::read_to_string(input) {
                 Ok(content) => content,
                 Err(e) => {
                     eprintln!("Error reading input file: {}", e);
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
 
             let target_os = match target {
-                Some(os) => {
-                    match os {
-                        TargetOS::Windows => OS::Windows,
-                        TargetOS::Linux => OS::Linux,
-                    }
-                }
+                Some(os) => match os {
+                    TargetOS::Windows => OS::Windows,
+                    TargetOS::Linux => OS::Linux,
+                },
                 None => {
                     if current_os == "windows" {
                         OS::Windows
@@ -79,12 +77,10 @@ fn main() {
             };
 
             let target_shell = match shell {
-                Some(shell) => {
-                    match shell {
-                        TargetShell::Batch => Shell::Batch,
-                        TargetShell::Bash => Shell::Bash,
-                    }
-                }
+                Some(shell) => match shell {
+                    TargetShell::Batch => Shell::Batch,
+                    TargetShell::Bash => Shell::Bash,
+                },
                 None => {
                     if current_os == "windows" {
                         Shell::Batch
@@ -108,17 +104,22 @@ fn main() {
 
             if target_os == OS::Linux && target_shell == Shell::Batch {
                 eprintln!("Batch shell is not supported on Linux.");
-                return;
+                return ExitCode::FAILURE;
             }
 
-            println!("Compiling {} for {:?} using {:?} shell", input.display(), target_os, target_shell);
+            println!(
+                "Compiling {} for {:?} using {:?} shell",
+                input.display(),
+                target_os,
+                target_shell
+            );
 
             let mut lexer = Lexer::new(&input_content);
             let tokens = match lexer.tokenise() {
                 Ok(tokens) => tokens,
                 Err(e) => {
                     eprintln!("Error during tokenization: {}", e);
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
 
@@ -127,7 +128,7 @@ fn main() {
                 Ok(ast) => ast,
                 Err(e) => {
                     eprintln!("Error during parsing: {}", e);
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
 
@@ -135,15 +136,20 @@ fn main() {
                 Ok(output) => output,
                 Err(e) => {
                     eprintln!("Error during compilation: {}", e);
-                    return;
+                    return ExitCode::FAILURE;
                 }
             };
 
             if let Err(e) = std::fs::write(&output, output_content) {
                 eprintln!("Error writing output file: {}", e);
-            } else {
-                println!("Compilation successful! Output written to {}", output.display());
+                return ExitCode::FAILURE;
             }
+
+            println!(
+                "Compilation successful! Output written to {}",
+                output.display()
+            );
+            ExitCode::SUCCESS
         }
     }
 }

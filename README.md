@@ -7,7 +7,7 @@ Robust Operating System shELL Adaptor
 **Rosella** is designed to be a cross-platform scripting language that transpiles/compiles down into either Batch (for Windows) or Bash (for Linux). It also replaces or abstracts a majority of the syntactic and logical quirks from both Bash and Batch, making it resemble a C-style language.
 
 ## Features
-- **Nice Looking:** No offense but... `while [[ $x -lt 100]]; do` just doesn't compare to `while int(x < 100) { ... }`
+- **Nice Looking:** No offense but... `while [[ $x -lt 100]]; do` just doesn't compare to `while x < 100 { ... }`
 - **Cross Platform Compilation by Default:** Install and compile to Batch or Bash from **ANY** supported machine.
 - **Lightweight Compiler:** **Rosella's** compiler is TINY (typically less than 1MB) and requires no dependencies.
 - **Path Formatting:** Paths will automatically format between `\` on Windows and `/` on Linux
@@ -19,7 +19,7 @@ Installing Rosella is as simple as downloading the latest binary from [releases]
 ## First Rosella Script
 Here is a super simple `Hello World` script in the file `hello.rosella`:
 ```csharp
-print("Hello World!")
+print("Hello World!");
 ```
 
 To compile this, run the following. Ensure `rosella` points to the location of the compiler: 
@@ -36,18 +36,18 @@ An example of what more complicated **Rosella** code looks like:
 ```csharp
 fn add(x, y) {
     let int result = x + y;
-    print("Result: ", result)
+    print("Result: ", result);
 }
 
-add(1, 2)
-add(3, 4)
-add(5, 6)
+add(1, 2);
+add(3, 4);
+add(5, 6);
 
 let int x = 0;
-while int(x < 100) {
-    print("Current value of x: ", x)
+while x < 100 {
+    print("Current value of x: ", x);
     let int x = x + 1;
-    print("secret_index_", x)
+    print("secret_index_", x);
 }
 ```
 
