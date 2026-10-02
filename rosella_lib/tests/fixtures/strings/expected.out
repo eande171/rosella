@@ -1,0 +1,22 @@
+length: 11 empty: 0
+slice: Hello|World|Wor
+char 0: a
+char 1: b
+char 2: c
+replace: Hell0 W0rld
+case: xAxA
+words: one cat two cat
+special: 50% and (x)
+upper: HELLO WORLD lower: hello world
+contains World
+case matters
+empty text is contained
+roll in range
+fixed: 4
+folder is a folder
+note is a file
+missing is neither
+script_dir found the script
+is_file keeps its else
+slept
+exit 0

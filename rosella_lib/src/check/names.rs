@@ -29,6 +29,24 @@ const BASH_RESERVED: &[&str] = &[
     "SECONDS", "LINENO", "HOSTNAME", "BASH",
 ];
 
+// Bash Would Call These Instead Of The Real Commands
+const SHELL_COMMANDS: &[&str] = &[
+    "printf", "read", "mkdir", "rm", "cp", "mv", "cd", "export", "local", "return", "exit",
+    "sleep", "dirname", "pwd", "command", "builtin", "set", "shift", "test", "echo", "eval",
+    "exec", "source", "declare", "unset", "true", "false", "then", "fi", "do", "done", "elif",
+    "case", "esac", "until", "select", "function", "time",
+];
+
+pub fn check_shell_command(name: &str) -> Result<(), RosellaError> {
+    if SHELL_COMMANDS.contains(&name) {
+        return Err(RosellaError::compiler(format!(
+            "A function named '{}' would replace a command the generated script needs; choose another name",
+            name
+        )));
+    }
+    Ok(())
+}
+
 pub fn check_function_name(name: &str) -> Result<(), RosellaError> {
     if name.to_lowercase().starts_with(INTERNAL_PREFIX) {
         return Err(RosellaError::compiler(format!(

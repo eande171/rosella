@@ -150,6 +150,10 @@ impl Lexer {
             "with" => Token::With,
             "while" => Token::While,
             "return" => Token::Return,
+            "break" => Token::Break,
+            "continue" => Token::Continue,
+            "for" => Token::For,
+            "in" => Token::In,
             _ => Token::Identifier(text),
         }
     }
@@ -171,12 +175,24 @@ impl Lexer {
                     self.advance();
                     return Ok(Token::NotEqual);
                 }
-                Err(RosellaError::InvalidPunctuation('!', start))
+                Ok(Token::Not)
             }
+            '&' => {
+                if self.current_character == Some('&') {
+                    self.advance();
+                    return Ok(Token::And);
+                }
+                Err(RosellaError::InvalidPunctuation('&', start))
+            }
+            '%' => Ok(Token::Modulo),
             '|' => {
                 if self.current_character == Some('>') {
                     self.advance();
                     return self.read_raw_instruction(start);
+                }
+                if self.current_character == Some('|') {
+                    self.advance();
+                    return Ok(Token::Or);
                 }
                 Err(RosellaError::InvalidPunctuation('|', start))
             }
@@ -303,16 +319,31 @@ mod tests {
     }
 
     #[test]
-    fn lone_bang_and_pipe_are_errors() {
+    fn logic_operators() {
+        assert_eq!(
+            tokens("!a && b || c % d != e"),
+            vec![
+                Token::Not,
+                Token::Identifier("a".into()),
+                Token::And,
+                Token::Identifier("b".into()),
+                Token::Or,
+                Token::Identifier("c".into()),
+                Token::Modulo,
+                Token::Identifier("d".into()),
+                Token::NotEqual,
+                Token::Identifier("e".into()),
+                Token::Eof
+            ]
+        );
         assert!(matches!(
-            Lexer::new("!").tokenise(),
-            Err(RosellaError::InvalidPunctuation('!', _))
+            Lexer::new("a & b").tokenise(),
+            Err(RosellaError::InvalidPunctuation('&', _))
         ));
         assert!(matches!(
             Lexer::new("| x").tokenise(),
             Err(RosellaError::InvalidPunctuation('|', _))
         ));
-        assert_eq!(tokens("a != b")[1], Token::NotEqual);
     }
 
     #[test]

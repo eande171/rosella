@@ -1,0 +1,14 @@
+/* Wildcards In Variables Match Nothing */
+make_dir("data");
+write_file(path("data", "keep.txt"), "x");
+let str pattern = "*.txt";
+fn clean(str file) { remove(path("data", file)); }
+clean(pattern);
+if exists("data", pattern) { print("SHOULD NOT PRINT"); }
+if not_exists("data", pattern) { print("a wildcard in a variable matches nothing"); }
+
+let int found = 0;
+for str file in files("data", pattern) { found = found + 1; }
+print("files() with a wildcard in a variable found ", found);
+if exists("data", "keep.txt") { print("keep.txt survived"); }
+remove_dir("data");

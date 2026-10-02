@@ -1,8 +1,8 @@
 #!/bin/bash
 add() {
-    local x="${1}"
-    local y="${2}"
-    result=$(( x + y ))
+    local rosella_add_x="${1}"
+    local rosella_add_y="${2}"
+    result=$(( rosella_add_x + rosella_add_y ))
     printf '%s\n' "Result: ${result}"
 }
 add "1" "2"

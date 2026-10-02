@@ -1,0 +1,19 @@
+up: 0
+up: 2
+up: 3
+down: 10
+down: 7
+down: 4
+down: 1
+k: 0
+k: 1
+k: 2
+limit is now 33
+found a.txt
+found b.txt
+txt files: 2
+after continue
+before break
+returned from a files loop
+square root of 49: 7
+exit 0

@@ -24,7 +24,7 @@ pub enum RosellaError {
     UnterminatedRaw(Span),
     UnexpectedToken(Token, Token, Span),
     ParseError(String, Span),
-    CompilerError(String),
+    CompilerError(String, Option<Span>),
 }
 
 impl fmt::Display for RosellaError {
@@ -62,14 +62,25 @@ impl fmt::Display for RosellaError {
                 span, expected_token, found_token
             ),
             RosellaError::ParseError(msg, span) => write!(f, "{}: {}", span, msg),
-            RosellaError::CompilerError(msg) => write!(f, "{}", msg),
+            RosellaError::CompilerError(msg, Some(span)) => write!(f, "{}: {}", span, msg),
+            RosellaError::CompilerError(msg, None) => write!(f, "{}", msg),
         }
     }
 }
 
 impl RosellaError {
     pub(crate) fn compiler(message: impl Into<String>) -> Self {
-        RosellaError::CompilerError(message.into())
+        RosellaError::CompilerError(message.into(), None)
+    }
+
+    // Innermost Statement Wins
+    pub(crate) fn located(self, span: Span) -> Self {
+        match self {
+            RosellaError::CompilerError(message, None) => {
+                RosellaError::CompilerError(message, Some(span))
+            }
+            other => other,
+        }
     }
 }
 

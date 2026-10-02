@@ -1,0 +1,13 @@
+count: 2
+first: hello world
+second: 50% & (more)!.txt
+missing: []
+1: hello world
+2: 50% & (more)!.txt
+mode: 50% & (fast)!
+unset is empty
+same: 0 different: 1
+argument reached git intact
+missing command failed
+sum: 2
+exit 0

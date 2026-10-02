@@ -19,11 +19,25 @@ for fixture in "$fixtures"/*/; do
     work="$(mktemp -d)"
     cp "$fixture/expected.$extension" "$work/"
 
+    # One Argument Per Line
+    arguments=()
+    if [ -f "$fixture/arguments" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            arguments+=("$line")
+        done < "$fixture/arguments"
+    fi
+
     # Isolated Run With Fixed Input
     if [ "$shell" = bash ]; then
-        actual="$(cd "$work" && echo "Bob Smith" | bash expected.sh 2>/dev/null; echo "exit $?")"
+        actual="$(cd "$work" && echo "Bob Smith" | bash expected.sh "${arguments[@]}" 2>/dev/null; echo "exit $?")"
     else
-        actual="$(cd "$work" && echo "Bob Smith" | cmd //c "$(cygpath -w "$work/expected.bat")" 2>/dev/null | tr -d '\r'; echo "exit ${PIPESTATUS[1]}")"
+        # Launcher Keeps Quoted Arguments Intact
+        launcher="@\"%~dp0expected.bat\""
+        for argument in "${arguments[@]}"; do
+            launcher+=" \"${argument//%/%%}\""
+        done
+        printf '%s\r\n' "$launcher" > "$work/launch.bat"
+        actual="$(cd "$work" && echo "Bob Smith" | cmd //c "$(cygpath -w "$work/launch.bat")" 2>/dev/null | tr -d '\r'; echo "exit ${PIPESTATUS[1]}")"
     fi
     rm -rf "$work"
 

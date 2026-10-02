@@ -9,12 +9,8 @@ echo(SHOULD NOT PRINT
 goto :eof
 
 :clean
-    set "rosella_clean_dir=!rosella_arg1!"
-    if not defined rosella_clean_dir (
-        >&2 echo(Stopped: 'rosella_clean_dir' is empty in a path to remove
-        set /a "rosella_exit=1"
-        goto :eof
-    )
-    if exist "!rosella_clean_dir!\build" rmdir /s /q "!rosella_clean_dir!\build"
+    set "rosella_clean.dir=!rosella_arg1!"
+    if not defined rosella_clean.dir (>&2 echo(Stopped: 'rosella_clean.dir' is empty in a path to remove& set "rosella_exit=1"& exit /b 1)
+    for /f "delims=*?" %%w in ("x!rosella_clean.dir!x") do if "%%w"=="x!rosella_clean.dir!x" if exist "!rosella_clean.dir!\build" rmdir /s /q "!rosella_clean.dir!\build"
     goto :eof
 

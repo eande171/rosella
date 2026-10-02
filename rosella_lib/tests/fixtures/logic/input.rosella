@@ -1,0 +1,50 @@
+fn int noisy(int value) {
+    print("noisy ran with ", value);
+    return value;
+}
+
+let int x = 2;
+let str name = "Bob";
+
+/* And Or Not */
+if x > 0 && name == "Bob" { print("and: yes"); }
+if x > 5 || name == "Bob" { print("or: yes"); }
+if !(x == 1 || x == 3) { print("not: yes"); }
+if !exists("missing.txt") && x == 2 { print("file and int: yes"); }
+if x == 9 || x == 2 && name == "Bob" { print("and binds tighter"); }
+if !!(x == 2) { print("double not"); }
+
+/* Right Side Only When Needed */
+if x == 9 && noisy(1) == 1 { print("SHOULD NOT PRINT"); }
+if x == 2 || noisy(2) == 2 { print("or stopped early"); }
+if x == 2 && noisy(3) == 3 { print("and ran both"); }
+
+/* Remainder */
+print("10 % 3 = ", 10 % 3, ", 17 % 5 = ", 17 % 5);
+let int r = x % 2;
+print("remainder: ", r);
+
+/* Break And Continue */
+let int i = 0;
+while i < 10 {
+    i = i + 1;
+    if i % 2 == 0 { continue; }
+    if i == 7 { break; }
+    print("odd: ", i);
+}
+
+let int outer = 0;
+while outer < 2 {
+    let int inner = 0;
+    while 1 == 1 {
+        inner = inner + 1;
+        if inner > 2 { break; }
+    }
+    print("outer ", outer, " inner ", inner);
+    outer = outer + 1;
+}
+
+/* Conditions Run Again Each Pass */
+let int n = 0;
+while n < 5 && noisy(n) != 3 { n = n + 1; }
+print("stopped at ", n);

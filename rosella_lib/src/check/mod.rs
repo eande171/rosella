@@ -2,18 +2,19 @@ mod names;
 
 use std::collections::HashMap;
 
-use crate::builtins::{self, Builtin, Signature};
+use crate::builtins::{self, Builtin, Kind, Signature};
 use crate::error::RosellaError;
-use crate::syntax::{Expr, OS, Param, Stmt, Type};
+use crate::syntax::{BinaryOp, Condition, Expr, Iteration, OS, Param, Statement, Stmt, Type};
 
 // Resolve Types
-pub fn check(statements: &mut [Stmt], os: OS) -> Result<(), RosellaError> {
+pub fn check(statements: &mut [Statement], os: OS) -> Result<(), RosellaError> {
     let mut checker = Checker {
         os,
         variables: HashMap::new(),
         functions: HashMap::new(),
         parameters: HashMap::new(),
         returns: None,
+        loops: 0,
     };
 
     checker.declare(statements, &HashMap::new())?;
@@ -34,6 +35,7 @@ struct Checker {
     parameters: Parameters,
     // Outer None Means Top Level
     returns: Option<Option<Type>>,
+    loops: usize,
 }
 
 impl Checker {
@@ -42,33 +44,40 @@ impl Checker {
     // Collect Global Declarations
     fn declare(
         &mut self,
-        statements: &[Stmt],
+        statements: &[Statement],
         parameters: &Parameters,
     ) -> Result<(), RosellaError> {
         for statement in statements {
+            self.declare_statement(&statement.kind, parameters)
+                .map_err(|error| error.located(statement.span))?;
+        }
+
+        Ok(())
+    }
+
+    fn declare_statement(
+        &mut self,
+        statement: &Stmt,
+        parameters: &Parameters,
+    ) -> Result<(), RosellaError> {
+        {
             match statement {
                 Stmt::Let {
                     variable_type,
                     name,
                     ..
+                } => self.declare_variable(name, *variable_type, parameters)?,
+                Stmt::For {
+                    variable_type,
+                    name,
+                    body,
+                    ..
                 } => {
-                    if parameters.contains_key(name) {
-                        return Err(error(format!(
-                            "'{}' is already a parameter; assign to it with {} = ...",
-                            name, name
-                        )));
+                    // Loops Can Share A Variable Of The Same Type
+                    if self.variables.get(name.as_str()) != Some(variable_type) {
+                        self.declare_variable(name, *variable_type, parameters)?;
                     }
-                    names::check_variable_name(name)?;
-                    if self
-                        .variables
-                        .insert(name.clone(), *variable_type)
-                        .is_some()
-                    {
-                        return Err(error(format!(
-                            "'{}' is declared more than once; assign to it with {} = ...",
-                            name, name
-                        )));
-                    }
+                    self.declare(body, parameters)?;
                 }
                 Stmt::If {
                     then_branch,
@@ -98,6 +107,45 @@ impl Checker {
         Ok(())
     }
 
+    fn declare_variable(
+        &mut self,
+        name: &str,
+        variable_type: Type,
+        parameters: &Parameters,
+    ) -> Result<(), RosellaError> {
+        if parameters.contains_key(name) {
+            return Err(error(format!(
+                "'{}' is already a parameter; assign to it with {} = ...",
+                name, name
+            )));
+        }
+        names::check_variable_name(name)?;
+
+        // Batch Ignores Case In Names
+        if let Some(other) = self
+            .variables
+            .keys()
+            .find(|other| other.as_str() != name && other.eq_ignore_ascii_case(name))
+        {
+            return Err(error(format!(
+                "'{}' and '{}' would be the same variable in Batch; choose names that differ by more than case",
+                other, name
+            )));
+        }
+
+        if self
+            .variables
+            .insert(name.to_string(), variable_type)
+            .is_some()
+        {
+            return Err(error(format!(
+                "'{}' is declared more than once; assign to it with {} = ...",
+                name, name
+            )));
+        }
+        Ok(())
+    }
+
     fn declare_function(
         &mut self,
         name: &str,
@@ -111,12 +159,25 @@ impl Checker {
             )));
         }
         names::check_function_name(name)?;
+        names::check_shell_command(name)?;
+
+        // Batch Ignores Case In Names
+        if let Some(other) = self
+            .functions
+            .keys()
+            .find(|other| other.as_str() != name && other.eq_ignore_ascii_case(name))
+        {
+            return Err(error(format!(
+                "Functions '{}' and '{}' would be the same in Batch; choose names that differ by more than case",
+                other, name
+            )));
+        }
 
         for (index, parameter) in parameters.iter().enumerate() {
             names::check_variable_name(&parameter.name)?;
             if parameters[..index]
                 .iter()
-                .any(|other| other.name == parameter.name)
+                .any(|other| other.name.eq_ignore_ascii_case(&parameter.name))
             {
                 return Err(error(format!(
                     "Function '{}' has two parameters named '{}'",
@@ -144,9 +205,10 @@ impl Checker {
 
     // Statements
 
-    fn check_block(&mut self, statements: &mut [Stmt]) -> Result<(), RosellaError> {
+    fn check_block(&mut self, statements: &mut [Statement]) -> Result<(), RosellaError> {
         for statement in statements {
-            self.check_statement(statement)?;
+            self.check_statement(&mut statement.kind)
+                .map_err(|error| error.located(statement.span))?;
         }
         Ok(())
     }
@@ -176,12 +238,12 @@ impl Checker {
                 Ok(())
             }
             Stmt::If {
-                condition_type,
+                resolved,
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                *condition_type = Some(self.condition_type(condition)?);
+                *resolved = Some(self.resolve_condition(condition)?);
                 self.check_block(then_branch)?;
                 if let Some(else_branch) = else_branch {
                     self.check_block(else_branch)?;
@@ -189,13 +251,33 @@ impl Checker {
                 Ok(())
             }
             Stmt::While {
-                condition_type,
+                resolved,
                 condition,
                 body,
             } => {
-                *condition_type = Some(self.condition_type(condition)?);
-                self.check_block(body)
+                *resolved = Some(self.resolve_condition(condition)?);
+                self.loops += 1;
+                let result = self.check_block(body);
+                self.loops -= 1;
+                result
             }
+            Stmt::For {
+                variable_type,
+                iterable,
+                resolved,
+                body,
+                ..
+            } => {
+                *resolved = Some(self.resolve_iteration(*variable_type, iterable)?);
+                self.loops += 1;
+                let result = self.check_block(body);
+                self.loops -= 1;
+                result
+            }
+            Stmt::Break | Stmt::Continue if self.loops == 0 => {
+                Err(error("break and continue can only be used inside a loop"))
+            }
+            Stmt::Break | Stmt::Continue => Ok(()),
             Stmt::With { os, body } if *os == self.os => self.check_block(body),
             Stmt::With { .. } => Ok(()),
             Stmt::Function {
@@ -214,9 +296,11 @@ impl Checker {
                 let outer_parameters =
                     std::mem::replace(&mut self.parameters, parameter_types(parameters));
                 let outer_returns = self.returns.replace(*return_type);
+                let outer_loops = std::mem::replace(&mut self.loops, 0);
                 let result = self.check_block(body);
                 self.parameters = outer_parameters;
                 self.returns = outer_returns;
+                self.loops = outer_loops;
                 result
             }
             Stmt::Return(value) => self.check_return(value.as_ref()),
@@ -259,17 +343,11 @@ impl Checker {
         }
 
         let signature = self.builtin(name, args)?;
-
-        // Read Can Discard Its Input
-        if signature.returns.is_some() && signature.builtin != Builtin::Read {
+        if let Kind::Value(_) = signature.kind {
             return Err(error(format!(
                 "{}() returns a value and cannot be used as a statement",
                 name
             )));
-        }
-
-        for arg in args {
-            self.value_type(arg)?;
         }
 
         Ok(())
@@ -300,6 +378,9 @@ impl Checker {
     fn builtin(&self, name: &str, args: &[Expr]) -> Result<&'static Signature, RosellaError> {
         let Some(signature) = builtins::find(name) else {
             // Older Typed Condition Form
+            if matches!(name, "range" | "files") {
+                return Err(error(format!("{}() can only be used in a for loop", name)));
+            }
             if matches!(name, "int" | "str" | "file") {
                 return Err(error(format!(
                     "{}(...) is no longer needed; write the comparison directly, like if x < 10",
@@ -318,7 +399,113 @@ impl Checker {
             )));
         }
 
+        self.check_builtin_arguments(signature, args)?;
         Ok(signature)
+    }
+
+    fn check_builtin_arguments(
+        &self,
+        signature: &Signature,
+        args: &[Expr],
+    ) -> Result<(), RosellaError> {
+        let mut types = Vec::new();
+        for arg in args {
+            types.push(self.value_type(arg)?);
+        }
+
+        match signature.builtin {
+            Builtin::Env | Builtin::SetEnv => {
+                let Some(Expr::String(variable)) = args.first() else {
+                    return Err(error(format!(
+                        "{}() needs the variable name written in quotes, like {}",
+                        signature.name, signature.usage
+                    )));
+                };
+                if !is_environment_name(variable) {
+                    return Err(error(format!(
+                        "'{}' is not a valid environment variable name",
+                        variable
+                    )));
+                }
+
+                // Batch Ignores Case In Names
+                let clash = self
+                    .variables
+                    .keys()
+                    .chain(self.parameters.keys())
+                    .find(|other| other.eq_ignore_ascii_case(variable));
+                if let Some(other) = clash {
+                    return Err(error(format!(
+                        "The environment variable '{}' would clash with the Rosella variable '{}'",
+                        variable, other
+                    )));
+                }
+                if signature.builtin == Builtin::SetEnv {
+                    names::check_function_name(variable)?;
+                }
+            }
+            Builtin::Arg => {
+                if types[0] != Type::Int {
+                    return Err(error(format!(
+                        "arg() takes the argument number, like {}",
+                        signature.usage
+                    )));
+                }
+                if let Expr::Number(number) = args[0]
+                    && number < 1
+                {
+                    return Err(error("Arguments are counted from 1, like arg(1)"));
+                }
+            }
+            // Batch Expands Wildcards Even In Quotes
+            Builtin::Cd
+            | Builtin::MakeDir
+            | Builtin::Remove
+            | Builtin::RemoveDir
+            | Builtin::Copy
+            | Builtin::Move
+            | Builtin::WriteFile
+            | Builtin::AppendFile
+            | Builtin::Exists
+            | Builtin::NotExists
+            | Builtin::IsDir
+            | Builtin::IsFile => {
+                let paths = match signature.builtin {
+                    Builtin::WriteFile | Builtin::AppendFile => &args[..1],
+                    _ => args,
+                };
+                if paths.iter().any(has_wildcard) {
+                    return Err(error(format!(
+                        "Wildcards like * only work in files(); {}() would treat them differently in Bash and Batch",
+                        signature.name
+                    )));
+                }
+            }
+            Builtin::Exit | Builtin::Sleep => {
+                if types[0] != Type::Int {
+                    return Err(error(format!(
+                        "{}() takes a whole number, like {}",
+                        signature.name, signature.usage
+                    )));
+                }
+            }
+            Builtin::Slice | Builtin::Random => {
+                let numbers = if signature.builtin == Builtin::Slice {
+                    &types[1..]
+                } else {
+                    &types[..]
+                };
+                if numbers.iter().any(|number| *number != Type::Int) {
+                    return Err(error(format!(
+                        "{}() needs whole numbers there, like {}",
+                        signature.name, signature.usage
+                    )));
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 
     // Types
@@ -347,9 +534,9 @@ impl Checker {
                 operator,
                 right,
             } => {
-                if operator.is_comparison() {
+                if operator.is_comparison() || operator.is_logical() {
                     return Err(error(
-                        "Comparisons can only be used in if and while conditions",
+                        "Comparisons, && and || can only be used in if and while conditions",
                     ));
                 }
                 for side in [left, right] {
@@ -361,6 +548,7 @@ impl Checker {
                 }
                 Ok(Type::Int)
             }
+            Expr::Not(_) => Err(error("! can only be used in if and while conditions")),
             Expr::Call { name, args } => {
                 if let Some(function) = self.functions.get(name) {
                     self.check_arguments(name, args)?;
@@ -373,14 +561,9 @@ impl Checker {
                 }
 
                 let signature = self.builtin(name, args)?;
-                let Some(returns) = signature.returns else {
-                    return Err(error(format!("{}() cannot be used as a value", name)));
-                };
-
-                for arg in args {
-                    self.value_type(arg)?;
-                }
-                Ok(returns)
+                signature
+                    .returns()
+                    .ok_or_else(|| error(format!("{}() cannot be used as a value", name)))
             }
         }
     }
@@ -388,7 +571,7 @@ impl Checker {
     // File Checks Only In Conditions
     fn value_type(&self, expr: &Expr) -> Result<Type, RosellaError> {
         match self.expr_type(expr)? {
-            Type::File => Err(error(format!(
+            Type::Check => Err(error(format!(
                 "{} can only be used as an if or while condition",
                 describe(expr)
             ))),
@@ -396,29 +579,115 @@ impl Checker {
         }
     }
 
-    fn condition_type(&self, condition: &Expr) -> Result<Type, RosellaError> {
-        if let Expr::Binary {
-            left,
-            operator,
-            right,
-        } = condition
-            && operator.is_comparison()
-        {
-            let (left, right) = (self.value_type(left)?, self.value_type(right)?);
-            if left != right {
-                return Err(error(format!(
-                    "This condition compares {} with {}; both sides need the same type",
-                    left, right
-                )));
-            }
-            return Ok(left);
-        }
+    fn resolve_iteration(
+        &self,
+        variable_type: Type,
+        iterable: &Expr,
+    ) -> Result<Iteration, RosellaError> {
+        let shape_error = || error("A for loop goes over range(start, end) or files(\"*.txt\")");
+        let Expr::Call { name, args } = iterable else {
+            return Err(shape_error());
+        };
 
-        match self.expr_type(condition)? {
-            Type::File => Ok(Type::File),
-            _ => Err(error(
-                "A condition needs a comparison like x < 10 or a file check like exists(\"notes.txt\")",
-            )),
+        match name.as_str() {
+            "range" => {
+                if variable_type != Type::Int {
+                    return Err(error(
+                        "A range() loop needs an int variable, like for int i in range(0, 10)",
+                    ));
+                }
+                let (start, end, step) = match args.as_slice() {
+                    [start, end] => (start, end, 1),
+                    [start, end, Expr::Number(step)] if *step != 0 => (start, end, *step),
+                    [_, _, _] => {
+                        return Err(error(
+                            "The step of range() must be a whole number other than 0, like range(10, 0, -1)",
+                        ));
+                    }
+                    _ => return Err(error("range() takes a start and an end, like range(0, 10)")),
+                };
+                for bound in [start, end] {
+                    if self.value_type(bound)? != Type::Int {
+                        return Err(error("range() needs int values for its start and end"));
+                    }
+                }
+                Ok(Iteration::Range {
+                    start: start.clone(),
+                    end: end.clone(),
+                    step,
+                })
+            }
+            "files" => {
+                if variable_type != Type::Str {
+                    return Err(error(
+                        "A files() loop needs a str variable, like for str file in files(\"*.txt\")",
+                    ));
+                }
+                if args.is_empty() {
+                    return Err(error("files() needs a pattern, like files(\"*.txt\")"));
+                }
+                for arg in args {
+                    self.value_type(arg)?;
+                }
+                Ok(Iteration::Files {
+                    pattern: args.clone(),
+                })
+            }
+            _ => Err(shape_error()),
+        }
+    }
+
+    fn resolve_condition(&self, condition: &Expr) -> Result<Condition, RosellaError> {
+        match condition {
+            Expr::Binary {
+                left,
+                operator: operator @ (BinaryOp::And | BinaryOp::Or),
+                right,
+            } => {
+                let left = Box::new(self.resolve_condition(left)?);
+                let right = Box::new(self.resolve_condition(right)?);
+                Ok(match operator {
+                    BinaryOp::And => Condition::And(left, right),
+                    _ => Condition::Or(left, right),
+                })
+            }
+            Expr::Not(inner) => Ok(Condition::Not(Box::new(self.resolve_condition(inner)?))),
+            Expr::Binary {
+                left,
+                operator,
+                right,
+            } if operator.is_comparison() => {
+                let (left_type, right_type) = (self.value_type(left)?, self.value_type(right)?);
+                if left_type != right_type {
+                    return Err(error(format!(
+                        "This condition compares {} with {}; both sides need the same type",
+                        left_type, right_type
+                    )));
+                }
+                if left_type == Type::Str
+                    && matches!(operator, BinaryOp::LessThanEq | BinaryOp::GreaterThanEq)
+                {
+                    return Err(error("Text can be compared with ==, !=, < and >"));
+                }
+                Ok(Condition::Compare {
+                    value_type: left_type,
+                    left: (**left).clone(),
+                    operator: *operator,
+                    right: (**right).clone(),
+                })
+            }
+            Expr::Call { name, args } if self.expr_type(condition)? == Type::Check => {
+                Ok(Condition::Check {
+                    check: name.clone(),
+                    args: args.clone(),
+                })
+            }
+            _ => {
+                self.expr_type(condition)?;
+                Err(error(
+                    "A condition needs a comparison like x < 10 or a file check like exists(\"notes.txt\")",
+                ))
+            }
         }
     }
 }
@@ -437,8 +706,26 @@ fn assignable(target: Type, value: Type, context: &str) -> Result<(), RosellaErr
     Ok(())
 }
 
-fn always_returns(statements: &[Stmt], os: OS) -> bool {
-    statements.iter().any(|statement| match statement {
+fn is_environment_name(name: &str) -> bool {
+    let mut characters = name.chars();
+    characters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && characters.all(|rest| rest.is_ascii_alphanumeric() || rest == '_')
+}
+
+fn has_wildcard(expr: &Expr) -> bool {
+    match expr {
+        Expr::String(text) => text.contains(['*', '?']),
+        Expr::Call { name, args } if name == "path" || name == "concat" => {
+            args.iter().any(has_wildcard)
+        }
+        _ => false,
+    }
+}
+
+fn always_returns(statements: &[Statement], os: OS) -> bool {
+    statements.iter().any(|statement| match &statement.kind {
         Stmt::Return(_) => true,
         Stmt::If {
             then_branch,
@@ -457,6 +744,7 @@ fn describe(expr: &Expr) -> String {
         Expr::Identifier(name) => format!("The variable '{}'", name),
         Expr::Binary { .. } => "An operator expression".to_string(),
         Expr::Call { name, .. } => format!("{}()", name),
+        Expr::Not(_) => "A ! expression".to_string(),
     }
 }
 
@@ -472,7 +760,7 @@ mod tests {
     use super::*;
     use crate::syntax::{Lexer, Parser};
 
-    fn checked(input: &str) -> Result<Vec<Stmt>, RosellaError> {
+    fn checked(input: &str) -> Result<Vec<Statement>, RosellaError> {
         let mut ast = Parser::new(Lexer::new(input).tokenise()?).parse()?;
         check(&mut ast, OS::Linux)?;
         Ok(ast)
@@ -480,10 +768,12 @@ mod tests {
 
     fn condition_type(input: &str) -> Type {
         let ast = checked(input).unwrap();
-        match ast.last().unwrap() {
-            Stmt::If { condition_type, .. } | Stmt::While { condition_type, .. } => {
-                condition_type.unwrap()
-            }
+        match &ast.last().unwrap().kind {
+            Stmt::If { resolved, .. } | Stmt::While { resolved, .. } => match resolved {
+                Some(Condition::Compare { value_type, .. }) => *value_type,
+                Some(Condition::Check { .. }) => Type::Check,
+                other => panic!("not a single comparison: {:?}", other),
+            },
             other => panic!("not a condition: {:?}", other),
         }
     }
@@ -499,7 +789,7 @@ mod tests {
             condition_type("let str name = \"a\";\nwhile name != \"b\" { }"),
             Type::Str
         );
-        assert_eq!(condition_type("if exists(\"notes.txt\") { }"), Type::File);
+        assert_eq!(condition_type("if exists(\"notes.txt\") { }"), Type::Check);
         assert_eq!(
             condition_type("let int x = 1;\nif x + 1 >= 3 { }"),
             Type::Int
@@ -526,7 +816,7 @@ mod tests {
     fn assignment_fills_in_its_type() {
         let ast = checked("let int x = 1;\nx = x + 1;").unwrap();
         assert!(matches!(
-            &ast[1],
+            &ast[1].kind,
             Stmt::Assign {
                 variable_type: Some(Type::Int),
                 ..
@@ -634,6 +924,186 @@ mod tests {
         assert!(check_error("let str path = \"x\";").contains("environment variable"));
         assert!(check_error("fn f(str PATH) { }").contains("environment variable"));
         assert!(check_error("let int rosella_x = 1;").contains("reserved"));
+    }
+
+    #[test]
+    fn script_inputs() {
+        assert!(checked("let str first = arg(1);\nlet int count = arg_count();\nlet str home_dir = env(\"HOME\");").is_ok());
+        assert!(checked("set_env(\"MODE\", \"dev\");\nlet int code = run(\"git\", \"status\");\nrun(\"git\", \"pull\");").is_ok());
+        assert!(check_error("let str a = arg(0);").contains("counted from 1"));
+        assert!(check_error("let str a = arg(\"one\");").contains("argument number"));
+        assert!(
+            check_error("let str name = \"HOME\";\nlet str home = env(name);")
+                .contains("written in quotes")
+        );
+        assert!(
+            check_error("let str h = env(\"MY-VAR\");")
+                .contains("not a valid environment variable name")
+        );
+        assert!(
+            check_error("let str home = \"x\";\nlet str h = env(\"HOME\");")
+                .contains("clash with the Rosella variable 'home'")
+        );
+        assert!(check_error("set_env(\"rosella_x\", \"1\");").contains("reserved"));
+        assert!(check_error("arg_count();").contains("cannot be used as a statement"));
+        assert!(check_error("exit(\"a\");").contains("whole number"));
+    }
+
+    #[test]
+    fn text_and_utility_functions() {
+        assert!(
+            checked(
+                "let str s = \"abc\";
+let int n = length(s);
+let str t = slice(s, 0, n - 1);"
+            )
+            .is_ok()
+        );
+        assert!(
+            checked(
+                "let str s = replace(upper(\"a\"), \"A\", lower(\"B\"));
+if contains(s, \"b\") { sleep(1); }"
+            )
+            .is_ok()
+        );
+        assert!(
+            checked(
+                "let int r = random(1, 6);
+let str d = script_dir();
+if is_dir(d) && !is_file(d) { }"
+            )
+            .is_ok()
+        );
+        assert!(
+            check_error("let str t = slice(\"abc\", \"0\", 1);").contains("needs whole numbers")
+        );
+        assert!(check_error("let int r = random(\"1\", 6);").contains("needs whole numbers"));
+        assert!(check_error("sleep(\"2\");").contains("whole number"));
+        assert!(
+            check_error("let str c = contains(\"a\", \"b\");")
+                .contains("only be used as an if or while condition")
+        );
+        assert!(check_error("output(\"git\");").contains("cannot be used as a statement"));
+        assert!(check_error("length(\"a\");").contains("cannot be used as a statement"));
+    }
+
+    #[test]
+    fn wildcards_only_work_in_files() {
+        assert!(
+            check_error("remove(\"*.txt\");").contains("Wildcards like * only work in files()")
+        );
+        assert!(check_error("if exists(path(\"logs\", \"?.log\")) { }").contains("Wildcards"));
+        assert!(check_error("copy(\"a.txt\", concat(\"b\", \"*\"));").contains("Wildcards"));
+        assert!(checked("write_file(\"notes.txt\", \"stars * and ?\");").is_ok());
+        assert!(checked("for str f in files(\"*.txt\") { remove(f); }").is_ok());
+    }
+
+    #[test]
+    fn function_names_that_break_a_shell_are_rejected() {
+        assert!(check_error("fn mkdir() { }").contains("would replace a command"));
+        assert!(check_error("fn printf() { }").contains("would replace a command"));
+        assert!(check_error("fn Greet() { }\nfn greet() { }").contains("same in Batch"));
+        assert!(check_error("fn f(int a, int A) { }").contains("two parameters"));
+    }
+
+    #[test]
+    fn names_differing_by_case_are_rejected() {
+        assert!(check_error("let int x = 1;\nlet int X = 2;").contains("same variable in Batch"));
+    }
+
+    #[test]
+    fn logical_conditions() {
+        let ast = checked(
+            "let int x = 1;\nlet str s = \"a\";\nif x > 0 && (s == \"a\" || !exists(\"f\")) { }",
+        )
+        .unwrap();
+        let Stmt::If {
+            resolved: Some(Condition::And(left, right)),
+            ..
+        } = &ast[2].kind
+        else {
+            panic!("expected an and condition")
+        };
+        assert!(matches!(
+            **left,
+            Condition::Compare {
+                value_type: Type::Int,
+                ..
+            }
+        ));
+        assert!(matches!(**right, Condition::Or(_, _)));
+        assert!(
+            check_error("let int x = 1;\nlet int y = x && 1;")
+                .contains("only be used in if and while")
+        );
+        assert!(check_error("let int x = 1;\nif x && x > 1 { }").contains("needs a comparison"));
+        assert!(check_error("let str s = \"a\";\nif s <= \"b\" { }").contains("==, !=, < and >"));
+        assert!(checked("let int x = 7 % 3;").is_ok());
+    }
+
+    #[test]
+    fn for_loops() {
+        assert!(
+            checked("for int i in range(0, 10) { if i == 3 { continue; } }\nlet int n = i;")
+                .is_ok()
+        );
+        assert!(checked("let int n = 3;\nfor int i in range(n, 0, -1) { break; }").is_ok());
+        assert!(
+            checked(
+                "let str dir = \"logs\";\nfor str file in files(dir, \"*.log\") { print(file); }"
+            )
+            .is_ok()
+        );
+        assert!(check_error("for str i in range(0, 10) { }").contains("needs an int variable"));
+        assert!(check_error("for int f in files(\"*\") { }").contains("needs a str variable"));
+        assert!(
+            check_error("let int s = 1;\nfor int i in range(0, 10, s) { }")
+                .contains("step of range()")
+        );
+        assert!(check_error("for int i in range(0, 10, 0) { }").contains("step of range()"));
+        assert!(check_error("for int i in range(0) { }").contains("start and an end"));
+        assert!(check_error("for int i in 10 { }").contains("goes over range"));
+        assert!(checked("for int i in range(0, 2) { }\nfor int i in range(0, 3) { }").is_ok());
+        assert!(checked("let int i = 0;\nfor int i in range(0, 1) { }").is_ok());
+        assert!(
+            check_error("let str i = \"a\";\nfor int i in range(0, 1) { }")
+                .contains("declared more than once")
+        );
+        assert!(check_error("let int r = range(0, 1);").contains("only be used in a for loop"));
+    }
+
+    #[test]
+    fn break_and_continue_need_a_loop() {
+        assert!(checked("let int i = 0;\nwhile i < 3 { if i == 1 { break; } continue; }").is_ok());
+        assert!(check_error("break;").contains("inside a loop"));
+        assert!(
+            check_error("let int i = 0;\nwhile i < 3 { fn f() { continue; } }")
+                .contains("inside a loop")
+        );
+    }
+
+    #[test]
+    fn errors_point_at_their_statement() {
+        let message = check_error(
+            "let int x = 1;
+fn f() {
+    print(y);
+}",
+        );
+        assert!(
+            message.starts_with("line 3, column 5: Unknown variable 'y'"),
+            "{}",
+            message
+        );
+        let message = check_error(
+            "let int x = 1;
+if x == 1 { } else if x == \"a\" { }",
+        );
+        assert!(
+            message.starts_with("line 2, column 20: This condition compares"),
+            "{}",
+            message
+        );
     }
 
     #[test]

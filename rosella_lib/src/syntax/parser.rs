@@ -1,4 +1,4 @@
-use super::ast::{BinaryOp, Expr, OS, Param, Stmt, Type};
+use super::ast::{BinaryOp, Expr, OS, Param, Statement, Stmt, Type};
 use super::token::{SpannedToken, Token};
 use crate::error::{RosellaError, Span};
 
@@ -79,8 +79,8 @@ impl Parser {
         result
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Stmt>, RosellaError> {
-        let mut statements: Vec<Stmt> = Vec::new();
+    pub fn parse(&mut self) -> Result<Vec<Statement>, RosellaError> {
+        let mut statements: Vec<Statement> = Vec::new();
 
         while self.current_token() != &Token::Eof {
             statements.push(self.parse_stmt()?);
@@ -89,14 +89,31 @@ impl Parser {
         Ok(statements)
     }
 
-    fn parse_stmt(&mut self) -> Result<Stmt, RosellaError> {
+    fn parse_stmt(&mut self) -> Result<Statement, RosellaError> {
+        let span = self.current_span();
+        let kind = self.parse_kind()?;
+        Ok(Statement { kind, span })
+    }
+
+    fn parse_kind(&mut self) -> Result<Stmt, RosellaError> {
         match self.current_token() {
             Token::Function => self.parse_fn_stmt(),
             Token::Let => self.parse_let_stmt(),
             Token::If => self.parse_if_stmt(),
             Token::With => self.parse_with_stmt(),
             Token::While => self.parse_while_stmt(),
+            Token::For => self.parse_for_stmt(),
             Token::Return => self.parse_return_stmt(),
+            Token::Break => {
+                self.advance();
+                self.expect_statement_end()?;
+                Ok(Stmt::Break)
+            }
+            Token::Continue => {
+                self.advance();
+                self.expect_statement_end()?;
+                Ok(Stmt::Continue)
+            }
             Token::RawInstruction(_) => self.parse_raw_stmt(),
             Token::Identifier(name) if self.peek_token() == &Token::Assign => {
                 let name = name.clone();
@@ -139,12 +156,12 @@ impl Parser {
         ))
     }
 
-    fn parse_block(&mut self, context: &str) -> Result<Vec<Stmt>, RosellaError> {
+    fn parse_block(&mut self, context: &str) -> Result<Vec<Statement>, RosellaError> {
         let open_span = self.current_span();
         self.expect_token(&Token::LBrace)?;
 
         self.nested(|parser| {
-            let mut body: Vec<Stmt> = Vec::new();
+            let mut body: Vec<Statement> = Vec::new();
 
             loop {
                 match parser.current_token() {
@@ -297,7 +314,9 @@ impl Parser {
         let else_branch = if self.current_token() == &Token::Else {
             self.advance();
             if self.current_token() == &Token::If {
-                Some(vec![self.nested(|parser| parser.parse_if_stmt())?])
+                let span = self.current_span();
+                let kind = self.nested(|parser| parser.parse_if_stmt())?;
+                Some(vec![Statement { kind, span }])
             } else {
                 Some(self.parse_block("else")?)
             }
@@ -306,7 +325,7 @@ impl Parser {
         };
 
         Ok(Stmt::If {
-            condition_type: None,
+            resolved: None,
             condition,
             then_branch,
             else_branch,
@@ -343,8 +362,26 @@ impl Parser {
         let body = self.parse_block("while")?;
 
         Ok(Stmt::While {
-            condition_type: None,
+            resolved: None,
             condition,
+            body,
+        })
+    }
+
+    fn parse_for_stmt(&mut self) -> Result<Stmt, RosellaError> {
+        self.expect_token(&Token::For)?;
+
+        let variable_type = self.parse_type("for")?;
+        let name = self.parse_identifier("for", "loop variable name")?;
+        self.expect_token(&Token::In)?;
+        let iterable = self.parse_expression()?;
+        let body = self.parse_block("for")?;
+
+        Ok(Stmt::For {
+            variable_type,
+            name,
+            iterable,
+            resolved: None,
             body,
         })
     }
@@ -366,6 +403,8 @@ impl Parser {
         self.nested(|parser| {
             parser.binary_expression(
                 &[
+                    &[Token::Or],
+                    &[Token::And],
                     &[Token::Equal, Token::NotEqual],
                     &[
                         Token::GreaterThan,
@@ -374,7 +413,7 @@ impl Parser {
                         Token::LessThanEq,
                     ],
                     &[Token::Plus, Token::Minus],
-                    &[Token::Multiply, Token::Divide],
+                    &[Token::Multiply, Token::Divide, Token::Modulo],
                 ],
                 0,
             )
@@ -421,6 +460,9 @@ impl Parser {
             Token::Minus => Ok(BinaryOp::Subtract),
             Token::Multiply => Ok(BinaryOp::Multiply),
             Token::Divide => Ok(BinaryOp::Divide),
+            Token::Modulo => Ok(BinaryOp::Modulo),
+            Token::And => Ok(BinaryOp::And),
+            Token::Or => Ok(BinaryOp::Or),
             _ => Err(self.error(format!("{:?} is not a valid binary operator", token))),
         }
     }
@@ -431,6 +473,11 @@ impl Parser {
                 let num = *n;
                 self.advance();
                 Ok(Expr::Number(num))
+            }
+            Token::Not => {
+                self.advance();
+                let operand = self.nested(|parser| parser.primary())?;
+                Ok(Expr::Not(Box::new(operand)))
             }
             // Negative Number Literals
             Token::Minus => {
@@ -527,6 +574,15 @@ mod tests {
     use crate::syntax::Lexer;
 
     fn parse(input: &str) -> Result<Vec<Stmt>, RosellaError> {
+        parse_statements(input).map(|statements| {
+            statements
+                .into_iter()
+                .map(|statement| statement.kind)
+                .collect()
+        })
+    }
+
+    fn parse_statements(input: &str) -> Result<Vec<Statement>, RosellaError> {
         Parser::new(Lexer::new(input).tokenise()?).parse()
     }
 
@@ -590,7 +646,7 @@ mod tests {
         assert!(matches!(
             &ast[0],
             Stmt::If {
-                condition_type: None,
+                resolved: None,
                 condition: Expr::Binary { .. },
                 ..
             }
@@ -653,17 +709,40 @@ mod tests {
         assert!(matches!(
             &ast[0],
             Stmt::Function { return_type: Some(Type::Int), name, body, .. }
-                if name == "add" && matches!(body.as_slice(), [Stmt::Return(Some(_))])
+                if name == "add" && matches!(body.as_slice(), [Statement { kind: Stmt::Return(Some(_)), .. }])
         ));
         assert!(matches!(
             &ast[1],
-            Stmt::Function { return_type: None, body, .. } if matches!(body.as_slice(), [Stmt::Return(None)])
+            Stmt::Function { return_type: None, body, .. } if matches!(body.as_slice(), [Statement { kind: Stmt::Return(None), .. }])
         ));
         assert!(
             parse("fn float add() { }")
                 .unwrap_err()
                 .to_string()
                 .contains("Unknown return type 'float'")
+        );
+    }
+
+    #[test]
+    fn for_loops() {
+        let ast =
+            parse("for int i in range(0, 10) { }\nfor str f in files(\"*.txt\") { }").unwrap();
+        assert!(matches!(
+            &ast[0],
+            Stmt::For { variable_type: Type::Int, name, iterable: Expr::Call { .. }, .. } if name == "i"
+        ));
+        assert!(matches!(
+            &ast[1],
+            Stmt::For {
+                variable_type: Type::Str,
+                ..
+            }
+        ));
+        assert!(
+            parse("for i in range(0, 1) { }")
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown type 'i'")
         );
     }
 

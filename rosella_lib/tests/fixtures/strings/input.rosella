@@ -1,0 +1,36 @@
+let str name = "Hello World";
+print("length: ", length(name), " empty: ", length(""));
+print("slice: ", slice(name, 0, 5), "|", slice(name, 6, 100), "|", slice(name, -5, 3));
+for int i in range(0, length("abc")) { print("char ", i, ": ", slice("abc", i, 1)); }
+
+/* Replace Is Case Sensitive */
+print("replace: ", replace(name, "o", "0"));
+print("case: ", replace("aAaA", "a", "x"));
+print("words: ", replace("one fish two fish", "fish", "cat"));
+print("special: ", replace("50% & (x)", "&", "and"));
+print("upper: ", upper(name), " lower: ", lower(name));
+
+if contains(name, "World") { print("contains World"); }
+if !contains(name, "world") { print("case matters"); }
+if contains(name, "") { print("empty text is contained"); }
+
+/* Random */
+let int roll = random(1, 6);
+if roll >= 1 && roll <= 6 { print("roll in range"); }
+print("fixed: ", random(4, 4));
+
+/* Files And Folders */
+make_dir("folder");
+write_file("note.txt", "x");
+if is_dir("folder") && !is_file("folder") { print("folder is a folder"); }
+if is_file("note.txt") && !is_dir("note.txt") { print("note is a file"); }
+if !is_dir("missing") && !is_file("missing") { print("missing is neither"); }
+if is_file(script_dir(), "expected.sh") || is_file(script_dir(), "expected.bat") { print("script_dir found the script"); }
+if is_file("missing") {
+    print("SHOULD NOT PRINT");
+} else {
+    print("is_file keeps its else");
+}
+
+sleep(1);
+print("slept");

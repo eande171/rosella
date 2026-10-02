@@ -7,9 +7,11 @@ use std::collections::{HashMap, HashSet};
 
 use crate::builtins::{self, Builtin};
 use crate::check::check;
-use crate::error::RosellaError;
-use crate::syntax::{BinaryOp, Expr, OS, Param, Stmt, Type};
-use backend::{Arg, Backend, Condition, ReturnCheck, Test, Transfer};
+use crate::error::{RosellaError, Span};
+use crate::syntax::{Condition, Expr, Iteration, OS, Param, Statement, Stmt, Type};
+use backend::{
+    Arg, Backend, FileCheck, Logic, LoopKind, LoopLabel, Part, ReturnCheck, Test, Transfer,
+};
 
 const INDENT: &str = "    ";
 const RETURN_VARIABLE: &str = "rosella_return";
@@ -21,13 +23,13 @@ pub enum Shell {
 }
 
 pub struct Compiler {
-    statements: Vec<Stmt>,
+    statements: Vec<Statement>,
     os: OS,
     shell: Shell,
 }
 
 impl Compiler {
-    pub fn new(statements: Vec<Stmt>, os: OS, shell: Shell) -> Self {
+    pub fn new(statements: Vec<Statement>, os: OS, shell: Shell) -> Self {
         Compiler {
             statements,
             os,
@@ -40,7 +42,7 @@ impl Compiler {
         check(&mut statements, self.os)?;
 
         let backend: Box<dyn Backend> = match self.shell {
-            Shell::Bash => Box::new(bash::Bash),
+            Shell::Bash => Box::new(bash::Bash::default()),
             Shell::Batch => Box::new(batch::Batch::default()),
         };
 
@@ -48,9 +50,13 @@ impl Compiler {
             os: self.os,
             backend,
             depth: 0,
-            loop_depth: 0,
+            loop_labels: Vec::new(),
             results: 0,
             function: None,
+            exiting: HashSet::new(),
+            assigned: Vec::new(),
+            counters: Vec::new(),
+            share_return: false,
         }
         .program(&statements)
     }
@@ -66,32 +72,62 @@ struct Generator {
     os: OS,
     backend: Box<dyn Backend>,
     depth: usize,
-    loop_depth: usize,
+    loop_labels: Vec<LoopLabel>,
     results: usize,
     function: Option<Scope>,
+    // Functions That Can Stop The Script
+    exiting: HashSet<String>,
+    // Variables Certain To Hold A Value Here
+    assigned: Vec<String>,
+    counters: Vec<String>,
+    // Only One Call Can Change The Returned Value
+    share_return: bool,
 }
 
 impl Generator {
-    fn program(mut self, statements: &[Stmt]) -> Result<String, RosellaError> {
+    fn program(mut self, statements: &[Statement]) -> Result<String, RosellaError> {
         if !self.backend.supports_recursion() {
             reject_recursion(statements, self.os)?;
         }
+        self.exiting = exiting_functions(statements, self.os);
 
-        let body = self.block(statements)?;
+        // The Script Folder Is Captured Before Anything Runs
+        let mut names = Vec::new();
+        for statement in statements {
+            statement_calls(&statement.kind, &mut names);
+        }
+        if names.iter().any(|name| name == "script_dir") {
+            self.backend.use_script_dir();
+        }
+
+        // Top Level Assignments Always Run Before Later Statements
+        let mut body = String::new();
+        for statement in statements {
+            let compiled = self
+                .statement(&statement.kind)
+                .map_err(|error| error.located(statement.span))?;
+            body.push_str(&compiled);
+            if let Stmt::Let { name, .. } | Stmt::For { name, .. } = &statement.kind {
+                self.assigned.push(name.clone());
+            }
+        }
         Ok(self.backend.program(body))
     }
 
     // Statements
 
-    fn block(&mut self, statements: &[Stmt]) -> Result<String, RosellaError> {
+    fn block(&mut self, statements: &[Statement]) -> Result<String, RosellaError> {
         let mut output = String::new();
         for statement in statements {
-            output.push_str(&self.statement(statement)?);
+            let compiled = self
+                .statement(&statement.kind)
+                .map_err(|error| error.located(statement.span))?;
+            output.push_str(&compiled);
         }
         Ok(output)
     }
 
-    fn body(&mut self, statements: &[Stmt]) -> Result<String, RosellaError> {
+    fn body(&mut self, statements: &[Statement]) -> Result<String, RosellaError> {
         let body = self.block(statements)?;
 
         // Placeholder For Empty Blocks
@@ -103,7 +139,7 @@ impl Generator {
     }
 
     // Track Call Depth
-    fn nested_body(&mut self, statements: &[Stmt]) -> Result<String, RosellaError> {
+    fn nested_body(&mut self, statements: &[Statement]) -> Result<String, RosellaError> {
         self.depth += 1;
         let body = self.body(statements);
         self.depth -= 1;
@@ -111,6 +147,18 @@ impl Generator {
     }
 
     fn statement(&mut self, statement: &Stmt) -> Result<String, RosellaError> {
+        // A Call Being Made Runs After Its Arguments
+        self.share_return = match statement {
+            Stmt::Let { value, .. }
+            | Stmt::Assign { value, .. }
+            | Stmt::Return(Some(value))
+            | Stmt::Expression(value) => match value {
+                Expr::Call { args, .. } => args.iter().map(count_calls).sum::<usize>() == 1,
+                other => count_calls(other) == 1,
+            },
+            _ => false,
+        };
+
         match statement {
             Stmt::Let {
                 variable_type,
@@ -132,23 +180,33 @@ impl Generator {
             Stmt::With { os, body } if *os == self.os => self.block(body),
             Stmt::With { .. } => Ok(String::new()),
             Stmt::While {
-                condition_type,
-                condition,
+                condition: test,
+                resolved,
                 body,
             } => {
-                let condition = self.condition(*condition_type, condition)?;
-                let check = match (&self.function, contains_return(body, self.os)) {
-                    (Some(_), true) if self.loop_depth == 0 => ReturnCheck::Clear,
-                    (Some(_), true) => ReturnCheck::Propagate,
-                    _ => ReturnCheck::None,
-                };
-
-                self.loop_depth += 1;
-                let body = self.nested_body(body);
-                self.loop_depth -= 1;
-
-                Ok(self.backend.while_loop(condition, body?, check))
+                let mut names = Vec::new();
+                all_calls(test, &mut names);
+                let exits = self.can_exit(&names) || self.body_exits(body);
+                let label = self.backend.begin_loop(LoopKind::While, exits);
+                let condition = self.condition(resolved)?;
+                let check = self.return_check(body);
+                let body = self.loop_body(&label, body)?;
+                Ok(self.backend.while_loop(&label, condition, body, check))
             }
+            Stmt::For {
+                name,
+                resolved,
+                body,
+                ..
+            } => self.for_loop(name, resolved, body),
+            Stmt::Break => match self.loop_labels.last() {
+                Some(label) => Ok(self.backend.break_loop(label)),
+                None => Err(error("break can only be used inside a loop")),
+            },
+            Stmt::Continue => match self.loop_labels.last() {
+                Some(label) => Ok(self.backend.continue_loop(label)),
+                None => Err(error("continue can only be used inside a loop")),
+            },
             Stmt::Function {
                 name,
                 return_type,
@@ -162,6 +220,91 @@ impl Generator {
         }
     }
 
+    fn return_check(&self, body: &[Statement]) -> ReturnCheck {
+        match (&self.function, contains_return(body, self.os)) {
+            (Some(_), true) if self.loop_labels.is_empty() => ReturnCheck::Clear,
+            (Some(_), true) => ReturnCheck::Propagate,
+            _ => ReturnCheck::None,
+        }
+    }
+
+    fn loop_body(&mut self, label: &LoopLabel, body: &[Statement]) -> Result<String, RosellaError> {
+        self.loop_labels.push(label.clone());
+        let body = self.nested_body(body);
+        self.loop_labels.pop();
+        body
+    }
+
+    fn for_loop(
+        &mut self,
+        name: &str,
+        resolved: &Option<Iteration>,
+        body: &[Statement],
+    ) -> Result<String, RosellaError> {
+        let Some(iteration) = resolved else {
+            return Err(error("The for loop was not resolved before compiling"));
+        };
+        let variable = self.resolve(name);
+        let check = self.return_check(body);
+        let exits = self.body_exits(body);
+        let mut output = String::new();
+
+        match iteration {
+            Iteration::Range { start, end, step } => {
+                let label = self.backend.begin_loop(LoopKind::Range, exits);
+                self.share_return = count_calls(start) + count_calls(end) == 1;
+                let start = self.hoist(start, &mut output)?;
+                let start = self.arith(&start)?;
+
+                // The End Is Worked Out Once
+                let end = self.hoist(end, &mut output)?;
+                let end = match end {
+                    Expr::Number(_) => self.arith(&end)?,
+                    // A Fresh Result Is Already A Copy
+                    Expr::Identifier(ref result) if result.starts_with("rosella_result") => {
+                        self.arith(&end)?
+                    }
+                    _ => {
+                        let result = self.next_result();
+                        if self.function.is_some() {
+                            output.push_str(&self.backend.declare_local(&result));
+                        }
+                        output.push_str(&self.backend.assign_int(&result, &self.arith(&end)?));
+                        self.arith(&Expr::Identifier(result))?
+                    }
+                };
+
+                self.counters.push(variable.clone());
+                let body = self.loop_body(&label, body);
+                self.counters.pop();
+                output.push_str(
+                    &self
+                        .backend
+                        .range_loop(&label, &variable, &start, &end, *step, body?, check),
+                );
+            }
+            Iteration::Files { pattern } => {
+                let label = self.backend.begin_loop(LoopKind::Files, exits);
+                self.share_return = pattern.iter().map(count_calls).sum::<usize>() == 1;
+                let mut converted = Vec::new();
+                for part in pattern {
+                    let part = self.hoist(part, &mut output)?;
+                    converted.push(self.stringify(&part, &mut output)?);
+                }
+                let pattern = self.path_parts(&converted)?;
+
+                let body = self.loop_body(&label, body)?;
+                output.push_str(
+                    &self
+                        .backend
+                        .files_loop(&label, &variable, &pattern, body, check)?,
+                );
+            }
+        }
+
+        Ok(output)
+    }
+
     fn assignment(
         &mut self,
         variable_type: Type,
@@ -171,14 +314,10 @@ impl Generator {
         let mut output = String::new();
 
         let value = match value {
-            // Read Straight Into The Variable
-            Expr::Call { name: call, args } if is_read(call) => {
-                let prompt = self.hoist(&args[0], &mut output)?;
-                output.push_str(
-                    &self
-                        .backend
-                        .read(&self.value_parts(&prompt)?, name, false)?,
-                );
+            // Produce Straight Into The Variable
+            Expr::Call { name: call, args } if is_produced(call) => {
+                let lines = self.produce(call, args, name, false, &mut output)?;
+                output.push_str(&lines);
                 return Ok(output);
             }
             // Copy The Returned Value
@@ -190,11 +329,15 @@ impl Generator {
             _ => self.hoist(value, &mut output)?,
         };
 
-        output.push_str(&match variable_type {
+        let assignment = match variable_type {
             Type::Int => self.backend.assign_int(name, &self.arith(&value)?),
-            Type::Str => self.backend.assign_str(name, &self.value_parts(&value)?)?,
-            Type::File => return Err(error("The file type cannot be stored in a variable")),
-        });
+            Type::Str => {
+                let value = self.stringify(&value, &mut output)?;
+                self.backend.assign_str(name, &self.value_parts(&value)?)?
+            }
+            Type::Check => return Err(error("The file type cannot be stored in a variable")),
+        };
+        output.push_str(&assignment);
         Ok(output)
     }
 
@@ -216,7 +359,11 @@ impl Generator {
             }
         }
 
-        output.push_str(&self.backend.return_from_function(self.loop_depth > 0));
+        output.push_str(
+            &self
+                .backend
+                .return_from_function(!self.loop_labels.is_empty()),
+        );
         Ok(output)
     }
 
@@ -224,24 +371,32 @@ impl Generator {
     fn if_chain(&mut self, statement: &Stmt) -> Result<String, RosellaError> {
         let mut branches = Vec::new();
         let mut current = statement;
+        let mut span = None;
 
         loop {
             let Stmt::If {
-                condition_type,
-                condition,
+                resolved,
                 then_branch,
                 else_branch,
+                ..
             } = current
             else {
                 return Err(error("Expected an if statement"));
             };
 
-            let condition = self.condition(*condition_type, condition)?;
+            // Else If Errors Point At Their Own Line
+            let condition = self.condition(resolved).map_err(|error| match span {
+                Some(span) => error.located(span),
+                None => error,
+            })?;
             let body = self.body(then_branch)?;
             branches.push((condition, body));
 
             match else_branch.as_deref() {
-                Some([next @ Stmt::If { .. }]) => current = next,
+                Some([next]) if matches!(next.kind, Stmt::If { .. }) => {
+                    current = &next.kind;
+                    span = Some(next.span);
+                }
                 Some(otherwise) => {
                     let otherwise = self.body(otherwise)?;
                     return Ok(self.backend.if_chain(branches, Some(otherwise)));
@@ -256,7 +411,7 @@ impl Generator {
         name: &str,
         returns: Option<Type>,
         parameters: &[Param],
-        body: &[Stmt],
+        body: &[Statement],
     ) -> Result<String, RosellaError> {
         let scope = Scope {
             name: name.to_string(),
@@ -267,7 +422,7 @@ impl Generator {
             returns,
         };
         let outer_scope = self.function.replace(scope);
-        let outer_loops = std::mem::replace(&mut self.loop_depth, 0);
+        let outer_loops = std::mem::take(&mut self.loop_labels);
 
         let local_names: Vec<String> = parameters
             .iter()
@@ -276,77 +431,103 @@ impl Generator {
         let body = self.nested_body(body);
 
         self.function = outer_scope;
-        self.loop_depth = outer_loops;
+        self.loop_labels = outer_loops;
 
         Ok(self.backend.function(name, &local_names, body?))
     }
 
     fn condition(
         &mut self,
-        condition_type: Option<Type>,
-        condition: &Expr,
-    ) -> Result<Condition, RosellaError> {
-        let mut setup = String::new();
-        let condition = self.hoist(condition, &mut setup)?;
+        resolved: &Option<Condition>,
+    ) -> Result<backend::Condition, RosellaError> {
+        let Some(resolved) = resolved else {
+            return Err(error("The condition was not resolved before compiling"));
+        };
+        let logic = self.logic(resolved)?;
+        self.backend.condition(logic)
+    }
 
-        let test = match (condition_type, &condition) {
-            (
-                Some(Type::Int),
-                Expr::Binary {
-                    left,
-                    operator,
-                    right,
-                },
-            ) if operator.is_comparison() => Test::Int {
-                left: self.arith(left)?,
-                operator: *operator,
-                right: self.arith(right)?,
-            },
-            (
-                Some(Type::Str),
-                Expr::Binary {
-                    left,
-                    operator:
-                        operator @ (BinaryOp::Equal
-                        | BinaryOp::NotEqual
-                        | BinaryOp::LessThan
-                        | BinaryOp::GreaterThan),
-                    right,
-                },
-            ) => Test::Str {
-                left: self.value_parts(left)?,
-                operator: *operator,
-                right: self.value_parts(right)?,
-            },
-            (Some(Type::File), Expr::Call { name, args })
-                if name == "exists" || name == "not_exists" =>
-            {
-                Test::File {
-                    negate: name == "not_exists",
-                    path: self.path_parts(args)?,
+    // Each Test Runs Its Own Calls
+    fn logic(&mut self, condition: &Condition) -> Result<Logic, RosellaError> {
+        let mut setup = String::new();
+
+        let test = match condition {
+            Condition::Not(inner) => return Ok(Logic::Not(Box::new(self.logic(inner)?))),
+            Condition::And(left, right) => {
+                return Ok(Logic::And(
+                    Box::new(self.logic(left)?),
+                    Box::new(self.logic(right)?),
+                ));
+            }
+            Condition::Or(left, right) => {
+                return Ok(Logic::Or(
+                    Box::new(self.logic(left)?),
+                    Box::new(self.logic(right)?),
+                ));
+            }
+            Condition::Compare {
+                value_type: Type::Str,
+                left,
+                operator,
+                right,
+            } => {
+                self.share_return = count_calls(left) + count_calls(right) == 1;
+                let left = self.hoist(left, &mut setup)?;
+                let left = self.stringify(&left, &mut setup)?;
+                let right = self.hoist(right, &mut setup)?;
+                let right = self.stringify(&right, &mut setup)?;
+                Test::Str {
+                    left: self.value_parts(&left)?,
+                    operator: *operator,
+                    right: self.value_parts(&right)?,
                 }
             }
-            (Some(Type::Int), _) => {
-                return Err(error("An int condition needs a comparison, like x < 10"));
+            Condition::Compare {
+                left,
+                operator,
+                right,
+                ..
+            } => {
+                self.share_return = count_calls(left) + count_calls(right) == 1;
+                let left = self.hoist(left, &mut setup)?;
+                let right = self.hoist(right, &mut setup)?;
+                Test::Int {
+                    left: self.arith(&left)?,
+                    operator: *operator,
+                    right: self.arith(&right)?,
+                }
             }
-            (Some(Type::Str), _) => {
-                return Err(error(
-                    "A str condition needs ==, !=, < or >, like name == \"Bob\"",
-                ));
-            }
-            (Some(Type::File), _) => {
-                return Err(error(
-                    "A file condition needs exists() or not_exists(), like exists(\"notes.txt\")",
-                ));
-            }
-            (None, _) => {
-                return Err(error(
-                    "The condition type was not resolved before compiling",
-                ));
+            Condition::Check { check, args } => {
+                self.share_return = args.iter().map(count_calls).sum::<usize>() == 1;
+                let mut converted = Vec::new();
+                for arg in args {
+                    let arg = self.hoist(arg, &mut setup)?;
+                    converted.push(self.stringify(&arg, &mut setup)?);
+                }
+
+                let file_check = match check.as_str() {
+                    "contains" => {
+                        return Ok(Logic::Test {
+                            test: Test::Contains {
+                                text: self.value_parts(&converted[0])?,
+                                part: self.value_parts(&converted[1])?,
+                            },
+                            setup,
+                        });
+                    }
+                    "not_exists" => FileCheck::Missing,
+                    "is_dir" => FileCheck::Directory,
+                    "is_file" => FileCheck::File,
+                    _ => FileCheck::Exists,
+                };
+                Test::File {
+                    check: file_check,
+                    path: self.path_parts(&converted)?,
+                }
             }
         };
 
-        self.backend.condition(test, setup)
+        Ok(Logic::Test { setup, test })
     }
 
     // Function Calls
@@ -360,9 +541,26 @@ impl Generator {
             return Ok(output);
         };
 
+        if signature.builtin == Builtin::Read {
+            // Discard The Input
+            let lines = self.produce(
+                name,
+                args,
+                "rosella_input",
+                self.function.is_some(),
+                &mut output,
+            )?;
+            output.push_str(&lines);
+            return Ok(output);
+        }
+
         let mut hoisted = Vec::new();
         for arg in args {
-            hoisted.push(self.hoist(arg, &mut output)?);
+            let arg = self.hoist(arg, &mut output)?;
+            hoisted.push(match signature.builtin {
+                Builtin::Exit | Builtin::Sleep => arg,
+                _ => self.stringify(&arg, &mut output)?,
+            });
         }
         let args = hoisted.as_slice();
 
@@ -371,8 +569,8 @@ impl Generator {
             Builtin::Print => backend.print(&self.concat_parts(args)?),
             Builtin::Cd => backend.cd(&self.path_parts(args)?),
             Builtin::MakeDir => backend.make_dir(&self.path_parts(args)?),
-            Builtin::Remove => backend.remove(&self.path_parts(args)?, false, self.depth),
-            Builtin::RemoveDir => backend.remove(&self.path_parts(args)?, true, self.depth),
+            Builtin::Remove => backend.remove(&self.path_parts(args)?, false),
+            Builtin::RemoveDir => backend.remove(&self.path_parts(args)?, true),
             Builtin::Copy | Builtin::Move => {
                 let transfer = match signature.builtin {
                     Builtin::Copy => Transfer::Copy,
@@ -389,22 +587,49 @@ impl Generator {
                 &self.value_parts(&args[1])?,
                 signature.builtin == Builtin::AppendFile,
             ),
-            // Discard The Input
-            Builtin::Read => backend.read(
-                &self.value_parts(&args[0])?,
-                "rosella_input",
-                self.function.is_some(),
-            ),
             Builtin::Exit => Ok(backend.exit(&self.arith(&args[0])?, self.depth)),
-            Builtin::Path
+            Builtin::Run => backend.run(&self.command(args)?),
+            Builtin::Sleep => Ok(backend.sleep(&self.arith(&args[0])?)),
+            Builtin::SetEnv => match &args[0] {
+                Expr::String(variable) => backend.set_env(variable, &self.value_parts(&args[1])?),
+                _ => Err(error("set_env() needs the variable name written in quotes")),
+            },
+            Builtin::Read
+            | Builtin::Output
+            | Builtin::Arg
+            | Builtin::ArgCount
+            | Builtin::Env
+            | Builtin::Path
             | Builtin::Concat
             | Builtin::GetCwd
             | Builtin::Exists
-            | Builtin::NotExists => Err(error(format!("{}() cannot be used as a statement", name))),
+            | Builtin::NotExists
+            | Builtin::IsDir
+            | Builtin::IsFile
+            | Builtin::Contains
+            | Builtin::Length
+            | Builtin::Slice
+            | Builtin::Replace
+            | Builtin::Upper
+            | Builtin::Lower
+            | Builtin::Random
+            | Builtin::ScriptDir => Err(error(format!("{}() cannot be used as a statement", name))),
         };
 
         output.push_str(&statement?);
         Ok(output)
+    }
+
+    fn can_exit(&self, names: &[String]) -> bool {
+        names
+            .iter()
+            .any(|name| stops_script(name) || self.exiting.contains(name))
+    }
+
+    fn body_exits(&self, body: &[Statement]) -> bool {
+        let mut names = Vec::new();
+        run_calls(body, self.os, &mut names);
+        self.can_exit(&names)
     }
 
     fn user_call(
@@ -418,18 +643,117 @@ impl Generator {
             let arg = self.hoist(arg, setup)?;
             values.push(match &arg {
                 Expr::Binary { .. } => Arg::Int(self.arith(&arg)?),
-                _ => Arg::Value(self.value_parts(&arg)?),
+                _ => {
+                    let arg = self.stringify(&arg, setup)?;
+                    Arg::Value(self.value_parts(&arg)?)
+                }
             });
         }
-        self.backend.call(name, &values)
+        self.backend
+            .call(name, &values, self.exiting.contains(name))
+    }
+
+    // Built-ins That Run Before Their Statement
+    fn produce(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        target: &str,
+        local: bool,
+        setup: &mut String,
+    ) -> Result<String, RosellaError> {
+        let mut hoisted = Vec::new();
+        for arg in args {
+            hoisted.push(self.hoist(arg, setup)?);
+        }
+
+        let builtin = builtins::find(name).map(|signature| signature.builtin);
+        match builtin {
+            Some(Builtin::Read) => {
+                let prompt = self.stringify(&hoisted[0], setup)?;
+                self.backend
+                    .read(&self.value_parts(&prompt)?, target, local)
+            }
+            Some(Builtin::Arg) => {
+                Ok(self
+                    .backend
+                    .argument(&self.arith(&hoisted[0])?, target, local))
+            }
+            Some(Builtin::ArgCount) => Ok(self.backend.argument_count(target, local)),
+            Some(Builtin::Run) => {
+                let mut converted = Vec::new();
+                for arg in &hoisted {
+                    converted.push(self.stringify(arg, setup)?);
+                }
+                let mut lines = self.backend.run(&self.command(&converted)?)?;
+                lines.push_str(&self.backend.capture_status(target, local));
+                Ok(lines)
+            }
+            Some(Builtin::Length) => {
+                let text = self.stringify(&hoisted[0], setup)?;
+                self.backend
+                    .length(&self.value_parts(&text)?, target, local)
+            }
+            Some(Builtin::Slice) => {
+                let text = self.stringify(&hoisted[0], setup)?;
+                let text = self.value_parts(&text)?;
+                self.backend.slice(
+                    &text,
+                    &self.arith(&hoisted[1])?,
+                    &self.arith(&hoisted[2])?,
+                    target,
+                    local,
+                )
+            }
+            Some(Builtin::Replace) => {
+                let mut texts = Vec::new();
+                for arg in &hoisted {
+                    let arg = self.stringify(arg, setup)?;
+                    texts.push(self.value_parts(&arg)?);
+                }
+                self.backend
+                    .replace(&texts[0], &texts[1], &texts[2], target, local)
+            }
+            Some(builtin @ (Builtin::Upper | Builtin::Lower)) => {
+                let text = self.stringify(&hoisted[0], setup)?;
+                self.backend.change_case(
+                    &self.value_parts(&text)?,
+                    builtin == Builtin::Upper,
+                    target,
+                    local,
+                )
+            }
+            Some(Builtin::Random) => {
+                let min = self.arith(&hoisted[0])?;
+                let max = self.arith(&hoisted[1])?;
+                Ok(self.backend.random(&min, &max, target, local))
+            }
+            Some(Builtin::Output) => {
+                let mut converted = Vec::new();
+                for arg in &hoisted {
+                    converted.push(self.stringify(arg, setup)?);
+                }
+                self.backend
+                    .output(&self.command(&converted)?, target, local)
+            }
+            _ => Err(error(format!(
+                "{}() cannot be produced into a variable",
+                name
+            ))),
+        }
+    }
+
+    fn command(&self, args: &[Expr]) -> Result<Vec<Vec<Part>>, RosellaError> {
+        args.iter().map(|arg| self.value_parts(arg)).collect()
     }
 }
 
 // Recursion
 
-fn reject_recursion(statements: &[Stmt], os: OS) -> Result<(), RosellaError> {
+fn reject_recursion(statements: &[Statement], os: OS) -> Result<(), RosellaError> {
     let mut calls: HashMap<String, Vec<String>> = HashMap::new();
-    collect_calls(statements, None, os, &mut calls);
+    let mut definitions: HashMap<String, Span> = HashMap::new();
+    collect_calls(statements, None, os, &mut calls, &mut definitions);
 
     for start in calls.keys() {
         let mut visited = HashSet::new();
@@ -440,7 +764,8 @@ fn reject_recursion(statements: &[Stmt], os: OS) -> Result<(), RosellaError> {
                 return Err(error(format!(
                     "Function '{}' calls itself, which Batch cannot support because its variables have no call stack",
                     start
-                )));
+                ))
+                .located(definitions[start]));
             }
             if visited.insert(callee) {
                 pending.extend(calls.get(callee).into_iter().flatten());
@@ -452,18 +777,20 @@ fn reject_recursion(statements: &[Stmt], os: OS) -> Result<(), RosellaError> {
 }
 
 fn collect_calls(
-    statements: &[Stmt],
+    statements: &[Statement],
     function: Option<&str>,
     os: OS,
     calls: &mut HashMap<String, Vec<String>>,
+    definitions: &mut HashMap<String, Span>,
 ) {
     for statement in statements {
         let mut found = Vec::new();
 
-        match statement {
+        match &statement.kind {
             Stmt::Function { name, body, .. } => {
                 calls.entry(name.clone()).or_default();
-                collect_calls(body, Some(name), os, calls);
+                definitions.insert(name.clone(), statement.span);
+                collect_calls(body, Some(name), os, calls, definitions);
             }
             Stmt::Let { value, .. }
             | Stmt::Assign { value, .. }
@@ -476,19 +803,23 @@ fn collect_calls(
                 ..
             } => {
                 expression_calls(condition, &mut found);
-                collect_calls(then_branch, function, os, calls);
+                collect_calls(then_branch, function, os, calls, definitions);
                 if let Some(else_branch) = else_branch {
-                    collect_calls(else_branch, function, os, calls);
+                    collect_calls(else_branch, function, os, calls, definitions);
                 }
             }
             Stmt::While {
                 condition, body, ..
             } => {
                 expression_calls(condition, &mut found);
-                collect_calls(body, function, os, calls);
+                collect_calls(body, function, os, calls, definitions);
+            }
+            Stmt::For { iterable, body, .. } => {
+                expression_calls(iterable, &mut found);
+                collect_calls(body, function, os, calls, definitions);
             }
             Stmt::With { os: with_os, body } if *with_os == os => {
-                collect_calls(body, function, os, calls)
+                collect_calls(body, function, os, calls, definitions)
             }
             _ => {}
         }
@@ -499,12 +830,188 @@ fn collect_calls(
     }
 }
 
+// Stopping The Script
+
+fn exiting_functions(statements: &[Statement], os: OS) -> HashSet<String> {
+    let mut defined = Vec::new();
+    definitions(statements, os, &mut defined);
+    let calls: Vec<(&str, Vec<String>)> = defined
+        .into_iter()
+        .map(|(name, body)| {
+            let mut names = Vec::new();
+            run_calls(body, os, &mut names);
+            (name, names)
+        })
+        .collect();
+
+    // Repeat Until Callers Of Exiting Functions Are All Found
+    let mut exiting = HashSet::new();
+    loop {
+        let before = exiting.len();
+        for (name, names) in &calls {
+            if names
+                .iter()
+                .any(|callee| stops_script(callee) || exiting.contains(callee))
+            {
+                exiting.insert(name.to_string());
+            }
+        }
+        if exiting.len() == before {
+            return exiting;
+        }
+    }
+}
+
+fn definitions<'a>(
+    statements: &'a [Statement],
+    os: OS,
+    found: &mut Vec<(&'a str, &'a [Statement])>,
+) {
+    for statement in statements {
+        match &statement.kind {
+            Stmt::Function { name, body, .. } => {
+                found.push((name, body));
+                definitions(body, os, found);
+            }
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                definitions(then_branch, os, found);
+                if let Some(else_branch) = else_branch {
+                    definitions(else_branch, os, found);
+                }
+            }
+            Stmt::While { body, .. } | Stmt::For { body, .. } => definitions(body, os, found),
+            Stmt::With { os: with_os, body } if *with_os == os => definitions(body, os, found),
+            _ => {}
+        }
+    }
+}
+
+// Calls Made When These Statements Run
+fn run_calls(statements: &[Statement], os: OS, names: &mut Vec<String>) {
+    for statement in statements {
+        match &statement.kind {
+            Stmt::Let { value, .. }
+            | Stmt::Assign { value, .. }
+            | Stmt::Return(Some(value))
+            | Stmt::Expression(value) => all_calls(value, names),
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                all_calls(condition, names);
+                run_calls(then_branch, os, names);
+                if let Some(else_branch) = else_branch {
+                    run_calls(else_branch, os, names);
+                }
+            }
+            Stmt::While {
+                condition, body, ..
+            } => {
+                all_calls(condition, names);
+                run_calls(body, os, names);
+            }
+            Stmt::For { iterable, body, .. } => {
+                all_calls(iterable, names);
+                run_calls(body, os, names);
+            }
+            Stmt::With { os: with_os, body } if *with_os == os => run_calls(body, os, names),
+            _ => {}
+        }
+    }
+}
+
+// Built-ins That Can End The Script
+fn stops_script(name: &str) -> bool {
+    builtins::find(name).is_some_and(|signature| {
+        matches!(
+            signature.builtin,
+            Builtin::Exit | Builtin::Remove | Builtin::RemoveDir
+        )
+    })
+}
+
+fn count_calls(expr: &Expr) -> usize {
+    match expr {
+        Expr::Binary { left, right, .. } => count_calls(left) + count_calls(right),
+        Expr::Not(inner) => count_calls(inner),
+        Expr::Call { name, args } => {
+            let own = usize::from(is_user_function(name));
+            own + args.iter().map(count_calls).sum::<usize>()
+        }
+        _ => 0,
+    }
+}
+
+// Every Call Name Anywhere In The Program
+fn statement_calls(statement: &Stmt, names: &mut Vec<String>) {
+    let body_calls = |body: &[Statement], names: &mut Vec<String>| {
+        for inner in body {
+            statement_calls(&inner.kind, names);
+        }
+    };
+
+    match statement {
+        Stmt::Let { value, .. }
+        | Stmt::Assign { value, .. }
+        | Stmt::Return(Some(value))
+        | Stmt::Expression(value) => all_calls(value, names),
+        Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            all_calls(condition, names);
+            body_calls(then_branch, names);
+            if let Some(else_branch) = else_branch {
+                body_calls(else_branch, names);
+            }
+        }
+        Stmt::While {
+            condition, body, ..
+        } => {
+            all_calls(condition, names);
+            body_calls(body, names);
+        }
+        Stmt::For { iterable, body, .. } => {
+            all_calls(iterable, names);
+            body_calls(body, names);
+        }
+        Stmt::Function { body, .. } | Stmt::With { body, .. } => body_calls(body, names),
+        _ => {}
+    }
+}
+
+fn all_calls(expr: &Expr, names: &mut Vec<String>) {
+    match expr {
+        Expr::Binary { left, right, .. } => {
+            all_calls(left, names);
+            all_calls(right, names);
+        }
+        Expr::Not(inner) => all_calls(inner, names),
+        Expr::Call { name, args } => {
+            names.push(name.clone());
+            for arg in args {
+                all_calls(arg, names);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn expression_calls(expr: &Expr, found: &mut Vec<String>) {
     match expr {
         Expr::Binary { left, right, .. } => {
             expression_calls(left, found);
             expression_calls(right, found);
         }
+        Expr::Not(inner) => expression_calls(inner, found),
         Expr::Call { name, args } => {
             if is_user_function(name) {
                 found.push(name.clone());
@@ -523,16 +1030,31 @@ fn error(message: impl Into<String>) -> RosellaError {
     RosellaError::compiler(message)
 }
 
-fn is_read(name: &str) -> bool {
-    builtins::find(name).is_some_and(|signature| signature.builtin == Builtin::Read)
+fn is_produced(name: &str) -> bool {
+    builtins::find(name).is_some_and(|signature| {
+        matches!(
+            signature.builtin,
+            Builtin::Read
+                | Builtin::Run
+                | Builtin::Output
+                | Builtin::Arg
+                | Builtin::ArgCount
+                | Builtin::Length
+                | Builtin::Slice
+                | Builtin::Replace
+                | Builtin::Upper
+                | Builtin::Lower
+                | Builtin::Random
+        )
+    })
 }
 
 fn is_user_function(name: &str) -> bool {
     builtins::find(name).is_none()
 }
 
-fn contains_return(statements: &[Stmt], os: OS) -> bool {
-    statements.iter().any(|statement| match statement {
+fn contains_return(statements: &[Statement], os: OS) -> bool {
+    statements.iter().any(|statement| match &statement.kind {
         Stmt::Return(_) => true,
         Stmt::If {
             then_branch,
@@ -544,7 +1066,7 @@ fn contains_return(statements: &[Stmt], os: OS) -> bool {
                     .as_deref()
                     .is_some_and(|otherwise| contains_return(otherwise, os))
         }
-        Stmt::While { body, .. } => contains_return(body, os),
+        Stmt::While { body, .. } | Stmt::For { body, .. } => contains_return(body, os),
         Stmt::With { os: with_os, body } if *with_os == os => contains_return(body, os),
         _ => false,
     })
@@ -623,12 +1145,99 @@ mod tests {
     }
 
     #[test]
+    fn recursion_inside_not_is_rejected() {
+        let source = "fn int down(int n) {\n    if !(down(n - 1) > 100) { return n; }\n    return n;\n}\nprint(down(3));";
+        assert!(batch_error(source).contains("'down' calls itself"));
+    }
+
+    #[test]
+    fn bash_functions_are_never_empty() {
+        assert!(bash("fn nothing() { return; }\nnothing();").contains("nothing() {\n    :\n}\n"));
+    }
+
+    #[test]
+    fn bash_parameters_are_hidden_from_called_functions() {
+        let output = bash("fn f(int x) { print(x); }\nf(1);");
+        assert!(output.contains("    local rosella_f_x=\"${1}\"\n"));
+        assert!(output.contains("\"${rosella_f_x}\""));
+    }
+
+    #[test]
+    fn batch_is_file_keeps_its_else() {
+        let output = try_compile(
+            "if is_file(\"a\") { print(1); } else { print(2); }",
+            OS::Windows,
+            Shell::Batch,
+        )
+        .unwrap();
+        assert!(
+            output.contains("if exist \"a\" if not exist \"a\\\" set \"rosella_condition0=1\"")
+        );
+        assert!(output.contains("if defined rosella_condition0 ("));
+    }
+
+    #[test]
+    fn batch_skips_wildcards_held_in_variables() {
+        let source = "let str p = \"x\";\nremove(p);\nremove(\"y\");";
+        assert!(!bash(source).contains("for"));
+        let output = try_compile(source, OS::Windows, Shell::Batch).unwrap();
+        assert!(output.contains(
+            "for /f \"delims=*?\" %%w in (\"x!p!x\") do if \"%%w\"==\"x!p!x\" if exist \"!p!\" del /f /q \"!p!\"\r\n"
+        ));
+        assert!(output.contains("if exist \"y\" del /f /q \"y\"\r\n"));
+    }
+
+    #[test]
     fn bash_results_are_local_inside_functions() {
         let output = bash(
             "fn int one() { return 1; }\nfn int two() { return one() + one(); }\nlet int x = one() + 1;",
         );
         assert!(output.contains("    local rosella_result0=\"${rosella_return}\"\n"));
-        assert!(output.contains("\nrosella_result2=\"${rosella_return}\"\n"));
+        assert!(output.contains("\nx=$(( rosella_return + 1 ))\n"));
+    }
+
+    #[test]
+    fn batch_passes_exits_along_only_when_needed() {
+        let source = "fn quiet() { print(1); }\nfn loud() { exit(2); }\nfn outer() { loud(); }\nquiet();\nouter();";
+        let output = try_compile(source, OS::Windows, Shell::Batch).unwrap();
+        assert!(output.contains("call :quiet\r\ncall :outer\r\nif defined rosella_exit"));
+    }
+
+    #[test]
+    fn batch_compares_known_numbers_directly() {
+        let output = try_compile(
+            "let int x = 1;\nif x == 1 { }\nif !(x == 2) { }\nfn f(int n) { if n > x { } }",
+            OS::Windows,
+            Shell::Batch,
+        )
+        .unwrap();
+        assert!(output.contains("if !x! EQU 1 ("));
+        assert!(output.contains("if not !x! EQU 2 ("));
+        assert!(output.contains("set /a \"rosella_temp"));
+        assert!(output.contains("if !rosella_f.n! GTR !rosella_temp"));
+    }
+
+    #[test]
+    fn errors_point_at_their_statement() {
+        let message = batch_error(
+            "print(1);
+fn int a(int n) { return a(n); }",
+        );
+        assert!(
+            message.starts_with("line 2, column 1: Function 'a' calls itself"),
+            "{}",
+            message
+        );
+        let message = batch_error(
+            "print(1);
+
+    let str s = \"a\nb\";",
+        );
+        assert!(
+            message.starts_with("line 3, column 5: Batch cannot keep a line break"),
+            "{}",
+            message
+        );
     }
 
     #[test]
@@ -636,6 +1245,6 @@ mod tests {
         assert!(batch_error("let str s = \"say \\\"hi\\\"\";").contains("'\"'"));
         assert!(batch_error("let str s = \"a\\nb\";").contains("line break"));
         assert!(batch_error("let int f = 1.5;").contains("whole number"));
-        assert!(batch_error("let str s = \"x\";\nif s <= \"y\" { }").contains("str condition"));
+        assert!(batch_error("let str s = \"x\";\nif s <= \"y\" { }").contains("==, !=, < and >"));
     }
 }

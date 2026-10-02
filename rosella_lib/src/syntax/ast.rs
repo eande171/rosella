@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::error::Span;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Number(i64),
@@ -14,6 +16,7 @@ pub enum Expr {
         name: String,
         args: Vec<Expr>,
     },
+    Not(Box<Expr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -22,20 +25,32 @@ pub enum BinaryOp {
     Subtract,
     Multiply,
     Divide,
+    Modulo,
     Equal,
     NotEqual,
     LessThan,
     LessThanEq,
     GreaterThan,
     GreaterThanEq,
+    And,
+    Or,
 }
 
 impl BinaryOp {
     pub fn is_comparison(self) -> bool {
-        !matches!(
+        matches!(
             self,
-            BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide
+            BinaryOp::Equal
+                | BinaryOp::NotEqual
+                | BinaryOp::LessThan
+                | BinaryOp::LessThanEq
+                | BinaryOp::GreaterThan
+                | BinaryOp::GreaterThanEq
         )
+    }
+
+    pub fn is_logical(self) -> bool {
+        matches!(self, BinaryOp::And | BinaryOp::Or)
     }
 }
 
@@ -50,7 +65,7 @@ pub enum Type {
     Int,
     Str,
     // Conditions Only
-    File,
+    Check,
 }
 
 impl Type {
@@ -68,15 +83,46 @@ impl fmt::Display for Type {
         match self {
             Type::Int => write!(f, "int"),
             Type::Str => write!(f, "str"),
-            Type::File => write!(f, "file"),
+            Type::Check => write!(f, "check"),
         }
     }
+}
+
+// Typed By The Checker
+#[derive(Debug, Clone, PartialEq)]
+pub enum Condition {
+    Compare {
+        value_type: Type,
+        left: Expr,
+        operator: BinaryOp,
+        right: Expr,
+    },
+    Check {
+        check: String,
+        args: Vec<Expr>,
+    },
+    Not(Box<Condition>),
+    And(Box<Condition>, Box<Condition>),
+    Or(Box<Condition>, Box<Condition>),
+}
+
+// Checked By The Checker
+#[derive(Debug, Clone, PartialEq)]
+pub enum Iteration {
+    Range { start: Expr, end: Expr, step: i64 },
+    Files { pattern: Vec<Expr> },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Param {
     pub name: String,
     pub param_type: Type,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Statement {
+    pub kind: Stmt,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,26 +139,35 @@ pub enum Stmt {
         value: Expr,
     },
     If {
-        condition_type: Option<Type>,
+        resolved: Option<Condition>,
         condition: Expr,
-        then_branch: Vec<Stmt>,
-        else_branch: Option<Vec<Stmt>>,
+        then_branch: Vec<Statement>,
+        else_branch: Option<Vec<Statement>>,
     },
     With {
         os: OS,
-        body: Vec<Stmt>,
+        body: Vec<Statement>,
     },
     While {
-        condition_type: Option<Type>,
+        resolved: Option<Condition>,
         condition: Expr,
-        body: Vec<Stmt>,
+        body: Vec<Statement>,
     },
     Function {
         name: String,
         return_type: Option<Type>,
         parameters: Vec<Param>,
-        body: Vec<Stmt>,
+        body: Vec<Statement>,
+    },
+    For {
+        variable_type: Type,
+        name: String,
+        iterable: Expr,
+        resolved: Option<Iteration>,
+        body: Vec<Statement>,
     },
     Return(Option<Expr>),
+    Break,
+    Continue,
     RawInstruction(String),
 }

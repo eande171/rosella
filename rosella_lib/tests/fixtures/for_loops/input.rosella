@@ -1,0 +1,61 @@
+/* Counting */
+for int i in range(0, 5) {
+    if i == 1 { continue; }
+    if i == 4 { break; }
+    print("up: ", i);
+}
+for int i in range(10, 0, -3) { print("down: ", i); }
+
+/* The End Is Worked Out Once */
+let int limit = 3;
+for int k in range(0, limit) {
+    limit = limit + 10;
+    print("k: ", k);
+}
+print("limit is now ", limit);
+
+/* Files */
+make_dir("data");
+make_dir("data", "folder.txt");
+write_file(path("data", "b.txt"), "second");
+write_file(path("data", "a.txt"), "first");
+write_file(path("data", "c.log"), "other");
+write_file(path("data", ".hidden.txt"), "skipped like a hidden file");
+
+let int count = 0;
+for str file in files("data", "*.txt") {
+    count = count + 1;
+    if file == path("data", "a.txt") {
+        print("found a.txt");
+    } else if file == path("data", "b.txt") {
+        print("found b.txt");
+    } else {
+        print("UNEXPECTED MATCH");
+    }
+}
+print("txt files: ", count);
+
+for str file in files("data", "*.txt") {
+    if file == path("data", "a.txt") { continue; }
+    print("after continue");
+}
+for str file in files("data", "*.txt") {
+    print("before break");
+    break;
+}
+for str file in files("data", "*.none") { print("SHOULD NOT PRINT"); }
+
+/* Return From Inside A Loop */
+fn str first_log() {
+    for str file in files("data", "*.log") { return file; }
+    return "none";
+}
+if first_log() == path("data", "c.log") { print("returned from a files loop"); }
+
+fn int square_root(int target) {
+    for int n in range(1, 100) {
+        if n * n == target { return n; }
+    }
+    return -1;
+}
+print("square root of 49: ", square_root(49));

@@ -10,6 +10,10 @@ pub enum Token {
     With, // E.g. with windows, with linux
     While,
     Return,
+    Break,
+    Continue,
+    For,
+    In,
 
     // Identifier & Literals
     Number(i64),
@@ -24,6 +28,10 @@ pub enum Token {
     Divide,        // /
     Equal,         // ==
     NotEqual,      // !=
+    Modulo,        // %
+    And,           // &&
+    Or,            // ||
+    Not,           // !
     LessThan,      // <
     GreaterThan,   // >
     LessThanEq,    // <=

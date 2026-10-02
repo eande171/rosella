@@ -1,5 +1,5 @@
 use super::backend::{Arith, Part};
-use super::{Generator, error, is_read, is_user_function};
+use super::{Generator, RETURN_VARIABLE, error, is_produced, is_user_function};
 use crate::builtins::{self, Builtin};
 use crate::error::RosellaError;
 use crate::syntax::{BinaryOp, Expr, OS};
@@ -27,20 +27,19 @@ impl Generator {
                 operator: *operator,
                 right: Box::new(self.hoist(right, setup)?),
             }),
-            Expr::Call { name, args } if is_read(name) => {
-                let prompt = self.hoist(&args[0], setup)?;
+            Expr::Call { name, args } if is_produced(name) => {
                 let result = self.next_result();
                 let local = self.function.is_some();
-                setup.push_str(
-                    &self
-                        .backend
-                        .read(&self.value_parts(&prompt)?, &result, local)?,
-                );
+                let lines = self.produce(name, args, &result, local, setup)?;
+                setup.push_str(&lines);
                 Ok(Expr::Identifier(result))
             }
             Expr::Call { name, args } if is_user_function(name) => {
                 let call = self.user_call(name, args, setup)?;
                 setup.push_str(&call);
+                if self.share_return {
+                    return Ok(Expr::Identifier(RETURN_VARIABLE.to_string()));
+                }
                 let result = self.next_result();
                 setup.push_str(&self.backend.capture(&result, self.function.is_some()));
                 Ok(Expr::Identifier(result))
@@ -59,7 +58,41 @@ impl Generator {
         }
     }
 
-    fn next_result(&mut self) -> String {
+    // Numbers In Text Run First
+    pub(super) fn stringify(
+        &mut self,
+        expr: &Expr,
+        setup: &mut String,
+    ) -> Result<Expr, RosellaError> {
+        match expr {
+            Expr::Binary { .. } => {
+                let result = self.next_result();
+                if self.function.is_some() {
+                    setup.push_str(&self.backend.declare_local(&result));
+                }
+                setup.push_str(&self.backend.assign_int(&result, &self.arith(expr)?));
+                Ok(Expr::Identifier(result))
+            }
+            Expr::Call { name, args }
+                if matches!(
+                    builtins::find(name).map(|signature| signature.builtin),
+                    Some(Builtin::Concat | Builtin::Path)
+                ) =>
+            {
+                let mut converted = Vec::new();
+                for arg in args {
+                    converted.push(self.stringify(arg, setup)?);
+                }
+                Ok(Expr::Call {
+                    name: name.clone(),
+                    args: converted,
+                })
+            }
+            other => Ok(other.clone()),
+        }
+    }
+
+    pub(super) fn next_result(&mut self) -> String {
         let result = format!("rosella_result{}", self.results);
         self.results += 1;
         result
@@ -73,7 +106,19 @@ impl Generator {
                 _ => None,
             },
             grouped: matches!(expr, Expr::Binary { .. }),
+            known: match expr {
+                Expr::Identifier(name) => self.always_set(name),
+                _ => false,
+            },
         })
+    }
+
+    // Generated Names Are Always Set Before Use
+    fn always_set(&self, name: &str) -> bool {
+        let resolved = self.resolve(name);
+        resolved.starts_with("rosella_")
+            || self.counters.contains(&resolved)
+            || (self.function.is_none() && self.assigned.iter().any(|other| other == name))
     }
 
     fn arithmetic(&self, expr: &Expr) -> Result<String, RosellaError> {
@@ -91,9 +136,10 @@ impl Generator {
                     BinaryOp::Subtract => "-",
                     BinaryOp::Multiply => "*",
                     BinaryOp::Divide => "/",
+                    BinaryOp::Modulo => "%",
                     _ => {
                         return Err(error(
-                            "Comparisons can only be used in if and while conditions",
+                            "Comparisons, && and || can only be used in if and while conditions",
                         ));
                     }
                 };
@@ -109,6 +155,7 @@ impl Generator {
                 s
             ))),
             Expr::Call { name, .. } => Err(error(format!("{}() does not return an int", name))),
+            Expr::Not(_) => Err(error("! can only be used in if and while conditions")),
         }
     }
 
@@ -122,12 +169,20 @@ impl Generator {
                     Some(Builtin::Concat) => self.concat_parts(args),
                     Some(Builtin::Path) => self.path_parts(args),
                     Some(Builtin::GetCwd) => Ok(vec![Part::Cwd]),
+                    Some(Builtin::ScriptDir) => {
+                        Ok(vec![Part::Var("rosella_script_dir".to_string())])
+                    }
+                    Some(Builtin::Env) => match args.first() {
+                        Some(Expr::String(variable)) => Ok(vec![Part::Var(variable.clone())]),
+                        _ => Err(error("env() needs the variable name written in quotes")),
+                    },
                     _ => Err(error(format!("{}() cannot be used as a value", name))),
                 }
             }
             Expr::Binary { .. } => Err(error(
                 "Strings cannot be combined with operators; use concat() to join them",
             )),
+            Expr::Not(_) => Err(error("! can only be used in if and while conditions")),
         }
     }
 

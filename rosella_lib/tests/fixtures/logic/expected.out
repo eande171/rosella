@@ -1,0 +1,22 @@
+and: yes
+or: yes
+not: yes
+file and int: yes
+and binds tighter
+double not
+or stopped early
+noisy ran with 3
+and ran both
+10 % 3 = 1, 17 % 5 = 2
+remainder: 0
+odd: 1
+odd: 3
+odd: 5
+outer 0 inner 3
+outer 1 inner 3
+noisy ran with 0
+noisy ran with 1
+noisy ran with 2
+noisy ran with 3
+stopped at 3
+exit 0

@@ -2,4 +2,10 @@ Hi! Bob Smith.
 Hello Ann & Lee (100%).
 inside: 101
 outside: 5
+called before its definition
+defined inside an if
+a got 5
+a_b still has c = 1
+show_x sees 5
+nothing returned
 exit 0
