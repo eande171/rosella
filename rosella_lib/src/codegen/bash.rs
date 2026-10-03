@@ -15,7 +15,6 @@ pub struct Bash {
 
 impl Backend for Bash {
     fn program(&mut self, body: String) -> String {
-        // Functions Have Their Own Arguments
         let arguments = if self.uses_arguments {
             "rosella_args=(\"$@\")\n"
         } else {
@@ -26,9 +25,9 @@ impl Backend for Bash {
         } else {
             ""
         };
-        // Functions First So Calls Work From Anywhere
+        // Functions First
         format!(
-            "#!/bin/bash\n{}{}{}{}",
+            "#!/bin/bash\n{}{}{}{}exit 0\n",
             script_dir, arguments, self.functions, body
         )
     }
@@ -37,7 +36,7 @@ impl Backend for Bash {
         ":\n"
     }
 
-    // Called Functions Would Otherwise See These Locals
+    // Unique Locals
     fn local_name(&self, function: &str, parameter: &str) -> String {
         format!("rosella_{}_{}", function, parameter)
     }
@@ -119,7 +118,7 @@ impl Backend for Bash {
         )
     }
 
-    // Matches Are Files Only
+    // Files Only
     fn files_loop(
         &mut self,
         _label: &LoopLabel,
@@ -153,7 +152,7 @@ impl Backend for Bash {
                 index + 1
             )));
         }
-        // Final Return Is Implied
+        // Implied Return
         let body = body.strip_suffix(&indent("return\n")).unwrap_or(&body);
         if parameters.is_empty() && body.is_empty() {
             output.push_str(&indent(self.empty_body()));
@@ -203,9 +202,14 @@ impl Backend for Bash {
         Ok(format!("mkdir -p -- {}\n", quote(path, false)))
     }
 
+    // Kind Check
     fn remove(&self, path: &[Part], directory: bool) -> Result<String, RosellaError> {
-        let command = if directory { "rm -rf" } else { "rm -f" };
-        Ok(format!("{} -- {}\n", command, quote(path, true)))
+        let path = quote(path, true);
+        Ok(if directory {
+            format!("if [[ -d {0} ]]; then rm -rf -- {0}; fi\n", path)
+        } else {
+            format!("if [[ ! -d {0} ]]; then rm -f -- {0}; fi\n", path)
+        })
     }
 
     fn transfer(
@@ -241,12 +245,16 @@ impl Backend for Bash {
         } else {
             String::new()
         };
-        Ok(format!(
-            "{}read -r -p {} {}\n",
-            declare,
-            quote(prompt, false),
-            variable
-        ))
+        // Visible Prompt
+        let empty = prompt
+            .iter()
+            .all(|part| matches!(part, Part::Text(text) if text.is_empty()));
+        let prompt = if empty {
+            String::new()
+        } else {
+            format!("printf '%s' {}\n", quote(prompt, false))
+        };
+        Ok(format!("{}{}IFS= read -r {}\n", declare, prompt, variable))
     }
 
     fn exit(&self, code: &Arith, _depth: usize) -> String {
@@ -267,7 +275,7 @@ impl Backend for Bash {
                 target,
                 number - 1
             ),
-            // Negative Indexes Count From The End
+            // Index Guard
             None => format!(
                 "{keyword}{target}=\"\"\nif (( {index} >= 1 )); then {target}=\"${{rosella_args[{index} - 1]}}\"; fi\n",
                 keyword = keyword,
@@ -283,8 +291,8 @@ impl Backend for Bash {
         format!("{}{}=${{#rosella_args[@]}}\n", keyword, target)
     }
 
-    // Command Skips Functions With The Same Name
-    fn run(&self, command: &[Vec<Part>]) -> Result<String, RosellaError> {
+    // Skip Functions
+    fn run(&mut self, command: &[Vec<Part>]) -> Result<String, RosellaError> {
         let words: Vec<String> = command.iter().map(|part| quote(part, false)).collect();
         Ok(format!("command {}\n", words.join(" ")))
     }
@@ -294,9 +302,9 @@ impl Backend for Bash {
         format!("{}{}=$?\n", keyword, target)
     }
 
-    // First Line With Text Like Batch
-    fn output(
-        &self,
+    // First Text Line
+    fn run_output(
+        &mut self,
         command: &[Vec<Part>],
         target: &str,
         local: bool,
@@ -348,7 +356,7 @@ impl Backend for Bash {
         ))
     }
 
-    // Quotes Keep The Search And Replacement Literal
+    // Literal Replace
     fn replace(
         &mut self,
         text: &[Part],
@@ -385,7 +393,8 @@ impl Backend for Bash {
             keyword = keyword,
             source = source,
             target = target,
-            operator = if upper { "^^" } else { ",," }
+            // ASCII Only
+            operator = if upper { "^^[a-z]" } else { ",,[A-Z]" }
         ))
     }
 
@@ -420,7 +429,7 @@ fn render(logic: &Logic, root: bool) -> String {
                 return test;
             }
 
-            // Setup Runs Inside The Condition List
+            // Inline Setup
             let commands: String = setup.lines().map(|line| format!("{}; ", line)).collect();
             if root {
                 format!("{}{}", commands, test)
@@ -442,7 +451,7 @@ fn render(logic: &Logic, root: bool) -> String {
     }
 }
 
-// Bash Reads && And || Left To Right
+// Operator Grouping
 fn grouped(logic: &Logic, needs_group: fn(&Logic) -> bool) -> String {
     let text = render(logic, false);
     match logic {
@@ -483,14 +492,14 @@ fn test_text(test: &Test) -> String {
             };
             format!("[[ {} {} ]]", operator, quote(path, false))
         }
-        // The Quoted Part Matches Literally
+        // Literal Match
         Test::Contains { text, part } => {
             format!("[[ {} == *{}* ]]", quote(text, false), quote(part, false))
         }
     }
 }
 
-// Wildcards Stay Outside The Quotes
+// Unquoted Wildcards
 fn glob(parts: &[Part]) -> String {
     let mut output = String::new();
     let mut quoted_text = String::new();
@@ -530,7 +539,7 @@ fn glob(parts: &[Part]) -> String {
     output
 }
 
-// Text Already In A Variable Is Used Directly
+// Direct Variable
 fn source(text: &[Part], keyword: &str) -> (String, String) {
     match text {
         [Part::Var(name)] => (String::new(), name.clone()),
@@ -568,7 +577,7 @@ fn quote(parts: &[Part], guard_empty: bool) -> String {
             Part::Text(text) => {
                 for ch in text.chars() {
                     match ch {
-                        // Avoid Literal Line Breaks
+                        // Escape Newline
                         '\n' => output.push_str("\"$'\\n'\""),
                         '\\' | '"' | '$' | '`' => {
                             output.push('\\');
@@ -578,7 +587,7 @@ fn quote(parts: &[Part], guard_empty: bool) -> String {
                     }
                 }
             }
-            // Stop On Empty Variable
+            // Empty Guard
             Part::Var(name) if guard_empty => output.push_str(&format!("${{{}:?}}", name)),
             Part::Var(name) => output.push_str(&format!("${{{}}}", name)),
             Part::Cwd => output.push_str("${PWD}"),

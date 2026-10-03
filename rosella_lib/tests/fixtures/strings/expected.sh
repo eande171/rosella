@@ -27,9 +27,14 @@ printf '%s\n' "words: ${rosella_result9}"
 rosella_text="50% & (x)"
 rosella_result10="${rosella_text//"&"/"and"}"
 printf '%s\n' "special: ${rosella_result10}"
-rosella_result11="${name^^}"
-rosella_result12="${name,,}"
+rosella_result11="${name^^[a-z]}"
+rosella_result12="${name,,[A-Z]}"
 printf '%s\n' "upper: ${rosella_result11} lower: ${rosella_result12}"
+rosella_text="café"
+rosella_result13="${rosella_text^^[a-z]}"
+rosella_text="CAFÉ"
+rosella_result14="${rosella_text,,[A-Z]}"
+printf '%s\n' "accents stay: ${rosella_result13} ${rosella_result14}"
 if [[ "${name}" == *"World"* ]]; then
     printf '%s\n' "contains World"
 fi
@@ -43,8 +48,8 @@ roll=$(( 1 + RANDOM % (6 - 1 + 1) ))
 if (( roll >= 1 )) && (( roll <= 6 )); then
     printf '%s\n' "roll in range"
 fi
-rosella_result13=$(( 4 + RANDOM % (4 - 4 + 1) ))
-printf '%s\n' "fixed: ${rosella_result13}"
+rosella_result15=$(( 4 + RANDOM % (4 - 4 + 1) ))
+printf '%s\n' "fixed: ${rosella_result15}"
 mkdir -p -- "folder"
 printf '%s\n' "x" > "note.txt"
 if [[ -d "folder" ]] && ! [[ -f "folder" ]]; then
@@ -59,6 +64,10 @@ fi
 if [[ -f "${rosella_script_dir}/expected.sh" ]] || [[ -f "${rosella_script_dir}/expected.bat" ]]; then
     printf '%s\n' "script_dir found the script"
 fi
+nothing=""
+if ! [[ -d "${nothing}" ]] && ! [[ -f "${nothing}" ]] && ! [[ -e "${nothing}" ]]; then
+    printf '%s\n' "an empty path is nothing"
+fi
 if [[ -f "missing" ]]; then
     printf '%s\n' "SHOULD NOT PRINT"
 else
@@ -66,3 +75,4 @@ else
 fi
 sleep 1
 printf '%s\n' "slept"
+exit 0

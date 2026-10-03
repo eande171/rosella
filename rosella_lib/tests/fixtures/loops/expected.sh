@@ -14,3 +14,4 @@ if (( x == 1 )); then
 else
     printf '%s\n' "ELSE SHOULD NOT RUN"
 fi
+exit 0

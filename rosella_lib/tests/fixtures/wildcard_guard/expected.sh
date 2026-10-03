@@ -1,7 +1,7 @@
 #!/bin/bash
 clean() {
     local rosella_clean_file="${1}"
-    rm -f -- "data/${rosella_clean_file:?}"
+    if [[ ! -d "data/${rosella_clean_file:?}" ]]; then rm -f -- "data/${rosella_clean_file:?}"; fi
 }
 mkdir -p -- "data"
 printf '%s\n' "x" > "data/keep.txt"
@@ -22,4 +22,5 @@ printf '%s\n' "files() with a wildcard in a variable found ${found}"
 if [[ -e "data/keep.txt" ]]; then
     printf '%s\n' "keep.txt survived"
 fi
-rm -rf -- "data"
+if [[ -d "data" ]]; then rm -rf -- "data"; fi
+exit 0

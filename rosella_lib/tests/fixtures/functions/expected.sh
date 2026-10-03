@@ -50,3 +50,4 @@ a_b "1"
 shadow "99"
 nothing
 printf '%s\n' "nothing returned"
+exit 0

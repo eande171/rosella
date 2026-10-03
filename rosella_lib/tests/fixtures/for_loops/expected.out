@@ -14,6 +14,10 @@ found b.txt
 txt files: 2
 after continue
 before break
+found wow!.md
+names kept: 3
+dot names: 1
+dot names from a call: 2
 returned from a files loop
 square root of 49: 7
 exit 0

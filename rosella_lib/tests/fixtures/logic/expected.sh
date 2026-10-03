@@ -66,3 +66,4 @@ while (( n < 5 )) && { noisy "${n}"; (( rosella_return != 3 )); }; do
     n=$(( n + 1 ))
 done
 printf '%s\n' "stopped at ${n}"
+exit 0

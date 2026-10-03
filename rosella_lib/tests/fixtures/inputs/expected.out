@@ -1,9 +1,11 @@
-count: 2
+count: 4
 first: hello world
 second: 50% & (more)!.txt
 missing: []
 1: hello world
 2: 50% & (more)!.txt
+3: 
+4: last
 mode: 50% & (fast)!
 unset is empty
 same: 0 different: 1

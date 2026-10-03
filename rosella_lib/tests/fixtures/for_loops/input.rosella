@@ -6,7 +6,7 @@ for int i in range(0, 5) {
 }
 for int i in range(10, 0, -3) { print("down: ", i); }
 
-/* The End Is Worked Out Once */
+/* Fixed End */
 let int limit = 3;
 for int k in range(0, limit) {
     limit = limit + 10;
@@ -45,7 +45,34 @@ for str file in files("data", "*.txt") {
 }
 for str file in files("data", "*.none") { print("SHOULD NOT PRINT"); }
 
-/* Return From Inside A Loop */
+/* Special Names */
+write_file(path("data", "wow!.md"), "x");
+write_file(path("data", "a^b!c.md"), "x");
+write_file(path("data", "50% ^ plain.md"), "x");
+let int kept = 0;
+for str file in files("data", "*.md") {
+    if is_file(file) { kept = kept + 1; }
+    if file == path("data", "wow!.md") { print("found wow!.md"); }
+}
+print("names kept: ", kept);
+
+/* Dot Pattern */
+let int dotted = 0;
+for str file in files("data", ".*") { dotted = dotted + 1; }
+print("dot names: ", dotted);
+
+/* Pattern Read Once */
+write_file(path("data", ".second"), "x");
+fn str dot() { return "."; }
+fn str other() { return "other"; }
+let int both = 0;
+for str file in files("data", concat(dot(), "*")) {
+    let str changed = other();
+    both = both + 1;
+}
+print("dot names from a call: ", both);
+
+/* Loop Returns */
 fn str first_log() {
     for str file in files("data", "*.log") { return file; }
     return "none";

@@ -14,3 +14,4 @@ while (( x < 100 )); do
     x=$(( x + 1 ))
     printf '%s\n' "secret_index_${x}"
 done
+exit 0

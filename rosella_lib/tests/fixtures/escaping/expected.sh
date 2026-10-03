@@ -7,3 +7,4 @@ c="${a}, B!"
 printf '%s\n' "${c}"
 printf '%s\n' "multi"$'\n'"line"
 printf '%s\n' ""
+exit 0

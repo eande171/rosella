@@ -7,7 +7,7 @@ fn str label(int n) {
     return concat("many: ", n);
 }
 
-/* Return From Inside A Loop */
+/* Loop Returns */
 fn int first_square_over(int limit) {
     let int i = 0;
     while i < 100 {
@@ -29,7 +29,7 @@ add(5, 5);
 
 if add(total, 1) == 4 { print("four"); }
 
-/* Condition Calls Run Every Pass */
+/* Condition Calls */
 let int n = 0;
 while add(n, 0) < 3 { n = n + 1; }
 print("n: ", n);

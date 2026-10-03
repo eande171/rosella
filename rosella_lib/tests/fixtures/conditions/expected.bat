@@ -27,3 +27,4 @@ if "apple" LSS "banana" (
 if not exist "missing.txt" (
     echo(no file
 )
+exit /b 0

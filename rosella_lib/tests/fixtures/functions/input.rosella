@@ -12,7 +12,7 @@ fn bump(int x) {
 bump(1);
 print("outside: ", x);
 
-/* Calls Work Before The Definition */
+/* Early Calls */
 later("called before its definition");
 if x == 99 {
     fn only_if() { print("defined inside an if"); }
@@ -20,7 +20,7 @@ if x == 99 {
 only_if();
 fn later(str message) { print(message); }
 
-/* Parameter Names Stay Separate */
+/* Separate Parameters */
 fn a_b(int c) {
     a(5);
     print("a_b still has c = ", c);
@@ -28,7 +28,7 @@ fn a_b(int c) {
 fn a(int b_c) { print("a got ", b_c); }
 a_b(1);
 
-/* Called Functions See Globals */
+/* Global Lookup */
 fn show_x() { print("show_x sees ", x); }
 fn shadow(int x) { show_x(); }
 shadow(99);

@@ -9,11 +9,10 @@ if !x! EQU 1 (
 ) else (
     echo(ELSE SHOULD NOT RUN
 )
-goto :eof
+exit /b 0
 
 :rosella_while1
-set /a "rosella_temp2=j"
-if !rosella_temp2! LSS 2 goto :rosella_while1_body
+if !j! LSS 2 goto :rosella_while1_body
 goto :eof
 :rosella_while1_body
     echo(!i!!j!

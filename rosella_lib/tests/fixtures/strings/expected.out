@@ -8,6 +8,7 @@ case: xAxA
 words: one cat two cat
 special: 50% and (x)
 upper: HELLO WORLD lower: hello world
+accents stay: CAFé cafÉ
 contains World
 case matters
 empty text is contained
@@ -17,6 +18,7 @@ folder is a folder
 note is a file
 missing is neither
 script_dir found the script
+an empty path is nothing
 is_file keeps its else
 slept
 exit 0

@@ -15,7 +15,6 @@ impl Generator {
         }
     }
 
-    // Calls Run Before The Statement
     pub(super) fn hoist(&mut self, expr: &Expr, setup: &mut String) -> Result<Expr, RosellaError> {
         match expr {
             Expr::Binary {
@@ -58,7 +57,7 @@ impl Generator {
         }
     }
 
-    // Numbers In Text Run First
+    // Numbers To Text
     pub(super) fn stringify(
         &mut self,
         expr: &Expr,
@@ -106,19 +105,7 @@ impl Generator {
                 _ => None,
             },
             grouped: matches!(expr, Expr::Binary { .. }),
-            known: match expr {
-                Expr::Identifier(name) => self.always_set(name),
-                _ => false,
-            },
         })
-    }
-
-    // Generated Names Are Always Set Before Use
-    fn always_set(&self, name: &str) -> bool {
-        let resolved = self.resolve(name);
-        resolved.starts_with("rosella_")
-            || self.counters.contains(&resolved)
-            || (self.function.is_none() && self.assigned.iter().any(|other| other == name))
     }
 
     fn arithmetic(&self, expr: &Expr) -> Result<String, RosellaError> {

@@ -3,12 +3,14 @@ print("length: ", length(name), " empty: ", length(""));
 print("slice: ", slice(name, 0, 5), "|", slice(name, 6, 100), "|", slice(name, -5, 3));
 for int i in range(0, length("abc")) { print("char ", i, ": ", slice("abc", i, 1)); }
 
-/* Replace Is Case Sensitive */
+/* Case Sensitive Replace */
 print("replace: ", replace(name, "o", "0"));
 print("case: ", replace("aAaA", "a", "x"));
 print("words: ", replace("one fish two fish", "fish", "cat"));
 print("special: ", replace("50% & (x)", "&", "and"));
 print("upper: ", upper(name), " lower: ", lower(name));
+
+print("accents stay: ", upper("café"), " ", lower("CAFÉ"));
 
 if contains(name, "World") { print("contains World"); }
 if !contains(name, "world") { print("case matters"); }
@@ -26,6 +28,8 @@ if is_dir("folder") && !is_file("folder") { print("folder is a folder"); }
 if is_file("note.txt") && !is_dir("note.txt") { print("note is a file"); }
 if !is_dir("missing") && !is_file("missing") { print("missing is neither"); }
 if is_file(script_dir(), "expected.sh") || is_file(script_dir(), "expected.bat") { print("script_dir found the script"); }
+let str nothing = "";
+if !is_dir(nothing) && !is_file(nothing) && !exists(nothing) { print("an empty path is nothing"); }
 if is_file("missing") {
     print("SHOULD NOT PRINT");
 } else {

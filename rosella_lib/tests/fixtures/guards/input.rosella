@@ -1,4 +1,4 @@
-/* Stop On Empty Variable */
+/* Empty Guard */
 let str empty = "";
 fn clean(str dir) { remove_dir(dir, "build"); }
 clean(empty);

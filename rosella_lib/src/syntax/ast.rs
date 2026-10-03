@@ -88,7 +88,7 @@ impl fmt::Display for Type {
     }
 }
 
-// Typed By The Checker
+// Resolved Condition
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
     Compare {
@@ -106,7 +106,7 @@ pub enum Condition {
     Or(Box<Condition>, Box<Condition>),
 }
 
-// Checked By The Checker
+// Resolved Loop
 #[derive(Debug, Clone, PartialEq)]
 pub enum Iteration {
     Range { start: Expr, end: Expr, step: i64 },

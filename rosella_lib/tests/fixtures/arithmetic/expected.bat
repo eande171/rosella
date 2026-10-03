@@ -8,7 +8,7 @@ set /a "rosella_arg1=x * 3"
 call :show
 set /a "rosella_arg1=(x + 1) * (-2)"
 call :show
-goto :eof
+exit /b 0
 
 :show
     set "rosella_show.n=!rosella_arg1!"

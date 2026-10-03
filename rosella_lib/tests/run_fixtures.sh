@@ -19,19 +19,21 @@ for fixture in "$fixtures"/*/; do
     work="$(mktemp -d)"
     cp "$fixture/expected.$extension" "$work/"
 
-    # One Argument Per Line
+    # Read Arguments
     arguments=()
     if [ -f "$fixture/arguments" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
+            # Strip Carriage Return
+            line="${line%$'\r'}"
             arguments+=("$line")
         done < "$fixture/arguments"
     fi
 
-    # Isolated Run With Fixed Input
+    # Isolated Run
     if [ "$shell" = bash ]; then
         actual="$(cd "$work" && echo "Bob Smith" | bash expected.sh "${arguments[@]}" 2>/dev/null; echo "exit $?")"
     else
-        # Launcher Keeps Quoted Arguments Intact
+        # Argument Launcher
         launcher="@\"%~dp0expected.bat\""
         for argument in "${arguments[@]}"; do
             launcher+=" \"${argument//%/%%}\""

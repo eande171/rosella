@@ -12,8 +12,8 @@ fi
 if [[ ! -e "${project}/build/copy.ini" ]]; then
     printf '%s\n' "copy gone"
 fi
-rm -f -- "${project:?}/moved.ini"
-rm -rf -- "${project:?}/build"
+if [[ ! -d "${project:?}/moved.ini" ]]; then rm -f -- "${project:?}/moved.ini"; fi
+if [[ -d "${project:?}/build" ]]; then rm -rf -- "${project:?}/build"; fi
 if [[ ! -e "${project}/build" ]]; then
     printf '%s\n' "build removed"
 fi
@@ -26,4 +26,5 @@ if (( 1 == 1 )); then
 fi
 cat settings.ini
 cd ".."
-rm -rf -- "${project:?}"
+if [[ -d "${project:?}" ]]; then rm -rf -- "${project:?}"; fi
+exit 0

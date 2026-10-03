@@ -16,7 +16,7 @@ pub enum Builtin {
     Sleep,
     Read,
     Run,
-    Output,
+    RunOutput,
     Arg,
     ArgCount,
     Env,
@@ -47,7 +47,7 @@ pub enum Arity {
 pub enum Kind {
     Statement,
     Value(Type),
-    // Returns A Value That Can Be Ignored
+    // Ignorable Value
     Action(Type),
 }
 
@@ -138,7 +138,7 @@ const SIGNATURES: &[Signature] = &[
     statement("set_env",     Builtin::SetEnv,     Arity::Exactly(2), "set_env(\"MODE\", \"release\")"),
     action("read",       Builtin::Read,      Arity::Exactly(1), Type::Str,  "let str name = read(\"Name: \");"),
     action("run",        Builtin::Run,       Arity::AtLeast(1), Type::Int,  "run(\"git\", \"pull\")"),
-    value("output",      Builtin::Output,    Arity::AtLeast(1), Type::Str,  "output(\"git\", \"branch\", \"--show-current\")"),
+    value("run_output",  Builtin::RunOutput, Arity::AtLeast(1), Type::Str,  "run_output(\"git\", \"branch\", \"--show-current\")"),
     value("arg",         Builtin::Arg,       Arity::Exactly(1), Type::Str,  "arg(1)"),
     value("arg_count",   Builtin::ArgCount,  Arity::Exactly(0), Type::Int,  "arg_count()"),
     value("env",         Builtin::Env,       Arity::Exactly(1), Type::Str,  "env(\"HOME\")"),

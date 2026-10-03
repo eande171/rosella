@@ -13,3 +13,4 @@ if (( x > 1 )); then
     :
 fi
 printf '%s\n' "ok"
+exit 0

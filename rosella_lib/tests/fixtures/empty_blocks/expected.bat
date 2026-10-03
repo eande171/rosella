@@ -12,7 +12,7 @@ if !x! GTR 1 (
     rem
 )
 echo(ok
-goto :eof
+exit /b 0
 
 :nothing
     rem

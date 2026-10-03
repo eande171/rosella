@@ -135,7 +135,6 @@ impl Parser {
         }
     }
 
-    // Report At Statement End
     fn expect_statement_end(&mut self) -> Result<(), RosellaError> {
         if self.current_token() == &Token::Semicolon {
             self.advance();

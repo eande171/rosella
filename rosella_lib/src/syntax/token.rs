@@ -7,7 +7,7 @@ pub enum Token {
     Let,
     If,
     Else,
-    With, // E.g. with windows, with linux
+    With, // OS Block
     While,
     Return,
     Break,

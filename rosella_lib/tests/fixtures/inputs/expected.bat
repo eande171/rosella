@@ -1,7 +1,8 @@
 @echo off
+setlocal
 set "rosella_argc=0"
 :rosella_arguments
-if "%~1"=="" goto :rosella_arguments_done
+if "%~1"=="" if [%1]==[] goto :rosella_arguments_done
 set /a "rosella_argc+=1"
 set "rosella_arg_%rosella_argc%=%~1"
 shift
@@ -54,6 +55,7 @@ set "rosella_argument1=diff"
 set "rosella_argument2=--no-index"
 set "rosella_argument3=--quiet"
 set "rosella_argument4=!rosella_result7!"
+if "!rosella_argument4:~-1!"=="\" call :rosella_slashes rosella_argument4
 set "rosella_argument5=same.txt"
 setlocal disabledelayedexpansion
 call "%%rosella_command%%" "%%rosella_argument1%%" "%%rosella_argument2%%" "%%rosella_argument3%%" "%%rosella_argument4%%" "%%rosella_argument5%%"
@@ -81,7 +83,7 @@ if !rosella_result8! NEQ 0 (
 )
 set /a "rosella_result9=(same + different) + 1"
 echo(sum: !rosella_result9!
-goto :eof
+exit /b 0
 
 :rosella_while0
 set "rosella_result4=!rosella_argc!"
@@ -94,4 +96,16 @@ goto :eof
     echo(!i!: !rosella_result5!
     set /a "i=i + 1"
 goto :rosella_while0
+
+:rosella_slashes
+set "rosella_tail=!%~1!"
+set "rosella_extra="
+:rosella_slashes_loop
+if "!rosella_tail:~-1!"=="\" (
+    set "rosella_extra=!rosella_extra!\"
+    set "rosella_tail=!rosella_tail:~0,-1!"
+    goto :rosella_slashes_loop
+)
+set "%~1=!%~1!!rosella_extra!"
+goto :eof
 

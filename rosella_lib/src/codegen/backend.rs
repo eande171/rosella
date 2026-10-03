@@ -14,8 +14,6 @@ pub struct Arith {
     pub text: String,
     pub literal: Option<i64>,
     pub grouped: bool,
-    // A Variable That Always Holds A Number
-    pub known: bool,
 }
 
 impl Arith {
@@ -63,7 +61,7 @@ pub struct Condition {
     pub test: String,
 }
 
-// Each Test Carries Its Own Setup
+// Condition Tree
 pub enum Logic {
     Test { setup: String, test: Test },
     Not(Box<Logic>),
@@ -90,7 +88,7 @@ pub struct LoopLabel {
     pub exits: bool,
 }
 
-// Return From Inside A Loop
+// Loop Returns
 #[derive(Clone, Copy, PartialEq)]
 pub enum ReturnCheck {
     None,
@@ -104,7 +102,6 @@ pub enum Transfer {
     Move,
 }
 
-// Depth Counts Enclosing Calls
 pub trait Backend {
     fn program(&mut self, body: String) -> String;
     fn empty_body(&self) -> &'static str;
@@ -120,7 +117,6 @@ pub trait Backend {
 
     fn condition(&mut self, logic: Logic) -> Result<Condition, RosellaError>;
     fn if_chain(&self, branches: Vec<(Condition, String)>, otherwise: Option<String>) -> String;
-    // Exits Means The Body Can Stop The Script
     fn begin_loop(&mut self, kind: LoopKind, exits: bool) -> LoopLabel;
     fn while_loop(
         &mut self,
@@ -172,10 +168,10 @@ pub trait Backend {
 
     fn argument(&mut self, index: &Arith, target: &str, local: bool) -> String;
     fn argument_count(&mut self, target: &str, local: bool) -> String;
-    fn run(&self, command: &[Vec<Part>]) -> Result<String, RosellaError>;
+    fn run(&mut self, command: &[Vec<Part>]) -> Result<String, RosellaError>;
     fn capture_status(&self, target: &str, local: bool) -> String;
-    fn output(
-        &self,
+    fn run_output(
+        &mut self,
         command: &[Vec<Part>],
         target: &str,
         local: bool,

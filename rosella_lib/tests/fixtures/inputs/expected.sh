@@ -37,3 +37,4 @@ if command "rosella_missing_command"; rosella_result8=$?; (( rosella_result8 != 
 fi
 rosella_result9=$(( (same + different) + 1 ))
 printf '%s\n' "sum: ${rosella_result9}"
+exit 0

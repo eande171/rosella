@@ -24,7 +24,7 @@ set "rosella_arg1=99"
 call :shadow
 call :nothing
 echo(nothing returned
-goto :eof
+exit /b 0
 
 :greet
     set "rosella_greet.name=!rosella_arg1!"

@@ -12,7 +12,7 @@ set "rosella_arg2=6"
 call :add
 set /a "x=0"
 call :rosella_while0
-goto :eof
+exit /b 0
 
 :add
     set "rosella_add.x=!rosella_arg1!"

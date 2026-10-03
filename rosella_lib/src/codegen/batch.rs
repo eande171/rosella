@@ -15,6 +15,9 @@ pub struct Batch {
     uses_length: bool,
     uses_replace: bool,
     uses_contains: bool,
+    uses_keep: bool,
+    uses_capture: bool,
+    uses_slashes: bool,
 }
 
 impl Batch {
@@ -24,13 +27,20 @@ impl Batch {
         index
     }
 
-    // Precompute If Operands
     fn int_operand(&mut self, value: &Arith, setup: &mut String) -> String {
         if let Some(literal) = value.literal {
             return literal.to_string();
         }
-        if value.known {
+        if !value.grouped {
             return format!("!{}!", value.text);
+        }
+        self.int_number(value, setup)
+    }
+
+    // Computed Number
+    fn int_number(&mut self, value: &Arith, setup: &mut String) -> String {
+        if let Some(literal) = value.literal {
+            return literal.to_string();
         }
 
         let temporary = format!("rosella_temp{}", self.next_index());
@@ -78,8 +88,17 @@ impl Batch {
             }
             Test::File { check, path } => {
                 let quoted_path = quoted(&path)?;
-                // A Trailing Backslash Only Matches Folders
+                // Empty Path
+                let may_be_empty = check == FileCheck::Directory
+                    && !path
+                        .iter()
+                        .any(|part| matches!(part, Part::Text(text) if !text.is_empty()));
+
+                // Folder Check
                 let found = match check {
+                    FileCheck::Directory if may_be_empty => {
+                        format!("not \"{0}\"==\"\" if exist \"{0}\\\"", quoted_path)
+                    }
                     FileCheck::Directory => format!("exist \"{}\\\"", quoted_path),
                     FileCheck::File => {
                         format!("exist \"{0}\" if not exist \"{0}\\\"", quoted_path)
@@ -92,9 +111,9 @@ impl Batch {
                     ""
                 };
 
-                // Two Ifs In A Row Would Take The Else
+                // Flag Test
                 let guard = wildcard_guard(&path);
-                if check != FileCheck::File && guard.is_empty() {
+                if check != FileCheck::File && !may_be_empty && guard.is_empty() {
                     return Ok(Condition {
                         setup,
                         test: format!("{}{}", negate, found),
@@ -113,7 +132,6 @@ impl Batch {
                     test: format!("{}defined {}", negate, flag),
                 })
             }
-            // Case Sensitive Search Through A Helper
             Test::Contains { text, part } => {
                 self.uses_contains = true;
                 setup.push_str(&format!(
@@ -129,7 +147,53 @@ impl Batch {
         }
     }
 
-    // A Test Under Any Number Of Nots Needs No Flag
+    fn command(&mut self, command: &[Vec<Part>], redirect: &str) -> Result<String, RosellaError> {
+        let mut output = String::new();
+        let mut words = Vec::new();
+
+        for (index, parts) in command.iter().enumerate() {
+            if index == 0 {
+                output.push_str(&format!("set \"rosella_command={}\"\n", quoted(parts)?));
+                words.push("\"%%rosella_command%%\"".to_string());
+                continue;
+            }
+
+            // Trailing Backslashes
+            let name = format!("rosella_argument{}", index);
+            let fixed = parts.iter().all(|part| matches!(part, Part::Text(_)));
+            if fixed {
+                let text: String = parts
+                    .iter()
+                    .map(|part| match part {
+                        Part::Text(text) => text.as_str(),
+                        _ => "",
+                    })
+                    .collect();
+                let trailing = text.len() - text.trim_end_matches('\\').len();
+                let doubled = format!("{}{}", text, "\\".repeat(trailing));
+                output.push_str(&format!(
+                    "set \"{}={}\"\n",
+                    name,
+                    quoted(&[Part::Text(doubled)])?
+                ));
+            } else {
+                self.uses_slashes = true;
+                output.push_str(&format!(
+                    "set \"{name}={value}\"\nif \"!{name}:~-1!\"==\"\\\" call :rosella_slashes {name}\n",
+                    name = name,
+                    value = quoted(parts)?
+                ));
+            }
+            words.push(format!("\"%%{}%%\"", name));
+        }
+
+        // Literal Arguments
+        output.push_str("setlocal disabledelayedexpansion\n");
+        output.push_str(&format!("call {}{}\n", words.join(" "), redirect));
+        output.push_str("endlocal\n");
+        Ok(output)
+    }
+
     fn single(&mut self, logic: Logic) -> Result<Result<Condition, Logic>, RosellaError> {
         match logic {
             Logic::Test { setup, test } => Ok(Ok(self.leaf(test, setup)?)),
@@ -164,7 +228,7 @@ impl Batch {
                     flag = flag
                 ))
             }
-            // Right Side Only Runs When Needed
+            // Short Circuit
             Logic::And(left, right) => {
                 let left_flag = format!("rosella_condition{}", self.next_index());
                 let left_lines = self.flag_lines(*left, &left_flag)?;
@@ -192,12 +256,11 @@ impl Batch {
 
 impl Backend for Batch {
     fn program(&mut self, body: String) -> String {
-        // Arguments Are Copied Before Delayed Expansion Can Change Them
         let arguments = if self.uses_arguments {
             concat!(
                 "set \"rosella_argc=0\"\n",
                 ":rosella_arguments\n",
-                "if \"%~1\"==\"\" goto :rosella_arguments_done\n",
+                "if \"%~1\"==\"\" if [%1]==[] goto :rosella_arguments_done\n",
                 "set /a \"rosella_argc+=1\"\n",
                 "set \"rosella_arg_%rosella_argc%=%~1\"\n",
                 "shift\n",
@@ -208,19 +271,27 @@ impl Backend for Batch {
             ""
         };
 
-        // Shift Would Change %0
         let script_dir = if self.uses_script_dir {
             "set \"rosella_script_dir=%~dp0\"\nset \"rosella_script_dir=%rosella_script_dir:~0,-1%\"\n"
         } else {
             ""
         };
 
+        let capture = if self.uses_capture {
+            "set \"rosella_capture=%TEMP%\\rosella_%RANDOM%%RANDOM%.tmp\"\n"
+        } else {
+            ""
+        };
+
+        // Private Scope
+        let early = format!("{}{}{}", script_dir, arguments, capture);
+        let scope = if early.is_empty() { "" } else { "setlocal\n" };
+
         let mut output = format!(
             "@echo off\n{}{}setlocal enabledelayedexpansion\nset \"rosella_exit=\"\n{}",
-            script_dir, arguments, body
+            scope, early, body
         );
 
-        // Each Helper Brings The Ones It Calls
         let mut helpers = String::new();
         if self.uses_contains {
             helpers.push_str(CONTAINS_HELPER);
@@ -231,15 +302,23 @@ impl Backend for Batch {
         if self.uses_length || self.uses_replace || self.uses_contains {
             helpers.push_str(LENGTH_HELPER);
         }
+        if self.uses_keep {
+            helpers.push_str(KEEP_HELPER);
+        }
+        if self.uses_slashes {
+            helpers.push_str(SLASHES_HELPER);
+        }
 
-        // Subroutines After Main Script
+        // Default Exit Code
+        output.push_str("exit /b 0\n");
+
+        // Subroutines Last
         if !self.subroutines.is_empty() || !helpers.is_empty() {
-            output.push_str("goto :eof\n\n");
+            output.push('\n');
             output.push_str(&self.subroutines);
             output.push_str(&helpers);
         }
 
-        // CRLF For Label Lookup
         output.replace('\n', "\r\n")
     }
 
@@ -254,7 +333,7 @@ impl Backend for Batch {
 
     // No Local Variables
     fn local_name(&self, function: &str, parameter: &str) -> String {
-        // A Dot Cannot Appear In Either Name
+        // Dot Separator
         format!("rosella_{}.{}", function, parameter)
     }
 
@@ -272,7 +351,6 @@ impl Backend for Batch {
             Err(logic) => logic,
         };
 
-        // Batch If Has No And Or Or
         let flag = format!("rosella_condition{}", self.next_index());
         let lines = self.flag_lines(logic, &flag)?;
         Ok(Condition {
@@ -294,7 +372,7 @@ impl Backend for Batch {
         }
     }
 
-    // A Files Loop Must Also Stop Its For
+    // Stop Files Loop
     fn break_loop(&self, label: &LoopLabel) -> String {
         match label.kind {
             LoopKind::Files => "set \"rosella_break=1\"\ngoto :eof\n".to_string(),
@@ -381,7 +459,7 @@ impl Backend for Batch {
         output
     }
 
-    // The Body Is A Subroutine Because A For Block Cannot Hold Labels
+    // Body Subroutine
     fn files_loop(
         &mut self,
         label: &LoopLabel,
@@ -401,12 +479,32 @@ impl Backend for Batch {
             "        if defined rosella_returning goto :eof\n"
         };
 
-        // Names Starting With A Dot Are Skipped Like Bash
+        // Dot Names
+        let mut first = String::new();
+        let shown = match name_start(pattern) {
+            NameStart::Dot => "if 1 EQU 1 (".to_string(),
+            NameStart::Other => {
+                "set \"rosella_name=%%~nxf\"\n    if not \"!rosella_name:~0,1!\"==\".\" ("
+                    .to_string()
+            }
+            NameStart::Variable(name) => {
+                // Read Once
+                first = format!("set \"{}_dot=!{}:~0,1!\"\n", label.name, name);
+                format!(
+                    "set \"rosella_name=%%~nxf\"\n    set \"rosella_show=1\"\n    if \"!rosella_name:~0,1!\"==\".\" if not \"!{}_dot!\"==\".\" set \"rosella_show=\"\n    if defined rosella_show (",
+                    label.name
+                )
+            }
+        };
+
+        self.uses_keep = true;
         self.subroutines.push_str(&format!(
-            ":{label}\nset \"rosella_break=\"\n{guard}for %%f in (\"{pattern}\") do (\n    set \"rosella_name=%%~nxf\"\n    if not \"!rosella_name:~0,1!\"==\".\" (\n        set \"{variable}=%%~f\"\n        call :{label}_body\n{exiting}        if defined rosella_break (set \"rosella_break=\" & goto :eof)\n{returning}    )\n)\ngoto :eof\n\n:{label}_body\n{body}goto :eof\n\n",
+            ":{label}\nset \"rosella_break=\"\n{first}{guard}for %%f in (\"{pattern}\") do (\n    {shown}\n        call :rosella_keep {variable}\n        call :{label}_body\n{exiting}        if defined rosella_break (set \"rosella_break=\" & goto :eof)\n{returning}    )\n)\ngoto :eof\n\n:{label}_body\n{body}goto :eof\n\n",
             label = label.name,
+            first = first,
             guard = wildcard_guard(pattern),
             pattern = quoted(pattern)?,
+            shown = shown,
             variable = variable,
             exiting = exiting,
             returning = returning,
@@ -416,7 +514,7 @@ impl Backend for Batch {
         Ok(loop_call(label, check))
     }
 
-    // Pass Arguments Through Variables
+    // Argument Variables
     fn function(&mut self, name: &str, parameters: &[String], body: String) -> String {
         let mut output = format!(":{}\n", name);
         for (index, parameter) in parameters.iter().enumerate() {
@@ -428,7 +526,6 @@ impl Backend for Batch {
         }
         output.push_str(&body);
 
-        // Skip A Repeated Final Jump
         let jump = indent("goto :eof\n");
         if !body.ends_with(&jump) {
             output.push_str(&jump);
@@ -465,7 +562,7 @@ impl Backend for Batch {
         String::new()
     }
 
-    // Leave Every Enclosing Loop
+    // Leave Loops
     fn return_from_function(&self, nested_in_loop: bool) -> String {
         if nested_in_loop {
             "set \"rosella_returning=1\"\ngoto :eof\n".to_string()
@@ -494,7 +591,7 @@ impl Backend for Batch {
         Ok(format!("if not exist \"{}\" mkdir \"{}\"\n", path, path))
     }
 
-    // Stop On Empty Variable
+    // Empty Guard
     fn remove(&self, path: &[Part], directory: bool) -> Result<String, RosellaError> {
         let mut output = String::new();
         for part in path {
@@ -506,16 +603,16 @@ impl Backend for Batch {
             }
         }
 
+        // Kind Check
         let command = if directory {
-            "rmdir /s /q"
+            "if exist \"{path}\\\" rmdir /s /q \"{path}\""
         } else {
-            "del /f /q"
+            "if exist \"{path}\" if not exist \"{path}\\\" del /f /q \"{path}\""
         };
         output.push_str(&format!(
-            "{guard}if exist \"{path}\" {command} \"{path}\"\n",
-            guard = wildcard_guard(path),
-            path = quoted(path)?,
-            command = command
+            "{}{}\n",
+            wildcard_guard(path),
+            command.replace("{path}", &quoted(path)?)
         ));
         Ok(output)
     }
@@ -526,16 +623,18 @@ impl Backend for Batch {
         source: &[Part],
         destination: &[Part],
     ) -> Result<String, RosellaError> {
+        let source_path = quoted(source)?;
+        // Skip Folders
         let command = match transfer {
-            Transfer::Copy => "copy",
-            Transfer::Move => "move",
+            Transfer::Copy => format!("if not exist \"{}\\\" copy", source_path),
+            Transfer::Move => "move".to_string(),
         };
         let both: Vec<Part> = source.iter().chain(destination).cloned().collect();
         Ok(format!(
             "{}{} /y \"{}\" \"{}\" >nul\n",
             wildcard_guard(&both),
             command,
-            quoted(source)?,
+            source_path,
             quoted(destination)?
         ))
     }
@@ -589,35 +688,23 @@ impl Backend for Batch {
         format!("set \"{}=!rosella_argc!\"\n", target)
     }
 
-    // Call Reads Each Argument After Its Own Escaping Pass
-    fn run(&self, command: &[Vec<Part>]) -> Result<String, RosellaError> {
-        let (mut output, names) = command_variables(command)?;
-        let words: Vec<String> = names
-            .iter()
-            .map(|name| format!("\"%%{}%%\"", name))
-            .collect();
-
-        // Called Programs Keep Their Own Characters
-        output.push_str("setlocal disabledelayedexpansion\n");
-        output.push_str(&format!("call {}\n", words.join(" ")));
-        output.push_str("endlocal\n");
-        Ok(output)
+    fn run(&mut self, command: &[Vec<Part>]) -> Result<String, RosellaError> {
+        self.command(command, "")
     }
 
-    // The Outer Quotes Are Removed By The Child cmd
-    fn output(
-        &self,
+    fn run_output(
+        &mut self,
         command: &[Vec<Part>],
         target: &str,
         _local: bool,
     ) -> Result<String, RosellaError> {
-        let (mut output, names) = command_variables(command)?;
-        let words: Vec<String> = names.iter().map(|name| format!("\"!{}!\"", name)).collect();
+        self.uses_keep = true;
+        self.uses_capture = true;
+        let mut output = self.command(command, " >\"%rosella_capture%\"")?;
 
-        output.push_str(&format!("set \"{}=\"\n", target));
+        // First Text Line
         output.push_str(&format!(
-            "for /f usebackq^ delims^=^ eol^= %%l in (`\"{words}\"`) do if not defined {target} set \"{target}=%%l\"\n",
-            words = words.join(" "),
+            "set \"{target}=\"\nfor /f usebackq^ delims^=^ eol^= %%f in (\"!rosella_capture!\") do if not defined {target} call :rosella_keep {target}\ndel \"!rosella_capture!\"\n",
             target = target
         ));
         Ok(output)
@@ -645,7 +732,6 @@ impl Backend for Batch {
         ))
     }
 
-    // An Empty Variable Would Give The Slice Text Itself
     fn slice(
         &mut self,
         text: &[Part],
@@ -655,11 +741,11 @@ impl Backend for Batch {
         _local: bool,
     ) -> Result<String, RosellaError> {
         let (mut output, source) = source(text, "rosella_text")?;
-        let start_value = self.int_operand(start, &mut output);
-        let count_value = self.int_operand(count, &mut output);
+        let start_value = self.int_number(start, &mut output);
+        let count_value = self.int_number(count, &mut output);
         output.push_str(&format!("set \"{}=\"\n", target));
 
-        // Variable Positions Need A For Loop
+        // Variable Positions
         let slice = match (start.literal, count.literal) {
             (Some(_), Some(_)) => format!(
                 "set \"{target}=!{source}:~{start},{count}!\"",
@@ -698,7 +784,6 @@ impl Backend for Batch {
         ))
     }
 
-    // Case Insensitive Substitution Rewrites Each Letter
     fn change_case(
         &mut self,
         text: &[Part],
@@ -730,7 +815,7 @@ impl Backend for Batch {
         )
     }
 
-    // Timeout Fails When Input Is Piped
+    // Ping Delay
     fn sleep(&self, seconds: &Arith) -> String {
         format!(
             "set /a \"rosella_sleep={} + 1\"\nping -n !rosella_sleep! 127.0.0.1 >nul\n",
@@ -745,7 +830,6 @@ impl Backend for Batch {
 
 // Helper Functions
 
-// Binary Search For The Length Of The Variable Named Second
 const LENGTH_HELPER: &str = concat!(
     ":rosella_length\n",
     "set \"rosella_scan=!%~2!#\"\n",
@@ -760,7 +844,6 @@ const LENGTH_HELPER: &str = concat!(
     "goto :eof\n\n",
 );
 
-// Case Sensitive Search And Replace Into The Variable Named First
 const REPLACE_HELPER: &str = concat!(
     ":rosella_replace\n",
     "set \"rosella_result=\"\n",
@@ -783,7 +866,6 @@ const REPLACE_HELPER: &str = concat!(
     "goto :eof\n\n",
 );
 
-// Found When Removing The Part Changes The Text
 const CONTAINS_HELPER: &str = concat!(
     ":rosella_contains\n",
     "set \"rosella_found=\"\n",
@@ -795,7 +877,72 @@ const CONTAINS_HELPER: &str = concat!(
     "goto :eof\n\n",
 );
 
-// Runs The Command Only When No Variable Holds A Wildcard
+const KEEP_HELPER: &str = concat!(
+    ":rosella_keep\n",
+    "setlocal disabledelayedexpansion\n",
+    "for %%z in (1) do set \"rosella_raw=%%f\"\n",
+    "set \"rosella_raw=%rosella_raw:\"=\"\"%\"\n",
+    "if \"%rosella_raw:!=%\"==\"%rosella_raw%\" goto :rosella_keep_done\n",
+    "set \"rosella_raw=%rosella_raw:^=^^%\"\n",
+    "set \"rosella_raw=%rosella_raw:!=^!%\"\n",
+    ":rosella_keep_done\n",
+    "for /f delims^=^ eol^= %%v in (\"%rosella_raw%\") do endlocal & set \"%~1=%%v\"\n",
+    "set \"%~1=!%~1:\"\"=\"!\"\n",
+    "goto :eof\n\n",
+);
+
+enum NameStart {
+    Dot,
+    Other,
+    Variable(String),
+}
+
+fn name_start(pattern: &[Part]) -> NameStart {
+    let mut start = NameStart::Other;
+    let mut at_start = true;
+
+    for part in pattern {
+        match part {
+            Part::Text(text) => {
+                for ch in text.chars() {
+                    if ch == '\\' {
+                        start = NameStart::Other;
+                        at_start = true;
+                    } else if at_start {
+                        start = if ch == '.' {
+                            NameStart::Dot
+                        } else {
+                            NameStart::Other
+                        };
+                        at_start = false;
+                    }
+                }
+            }
+            Part::Var(name) if at_start => {
+                start = NameStart::Variable(name.clone());
+                at_start = false;
+            }
+            _ => at_start = false,
+        }
+    }
+
+    start
+}
+
+const SLASHES_HELPER: &str = concat!(
+    ":rosella_slashes\n",
+    "set \"rosella_tail=!%~1!\"\n",
+    "set \"rosella_extra=\"\n",
+    ":rosella_slashes_loop\n",
+    "if \"!rosella_tail:~-1!\"==\"\\\" (\n",
+    "    set \"rosella_extra=!rosella_extra!\\\"\n",
+    "    set \"rosella_tail=!rosella_tail:~0,-1!\"\n",
+    "    goto :rosella_slashes_loop\n",
+    ")\n",
+    "set \"%~1=!%~1!!rosella_extra!\"\n",
+    "goto :eof\n\n",
+);
+
 fn wildcard_guard(path: &[Part]) -> String {
     let values: String = path
         .iter()
@@ -805,13 +952,15 @@ fn wildcard_guard(path: &[Part]) -> String {
     if values.is_empty() {
         return String::new();
     }
+
+    // Split Check
     format!(
-        "for /f \"delims=*?\" %%w in (\"x{values}x\") do if \"%%w\"==\"x{values}x\" ",
+        "set \"rosella_wild=\" & for /f \"tokens=2 delims=*?\" %%w in (\"x{values}x\") do set \"rosella_wild=1\"\nif not defined rosella_wild ",
         values = values
     )
 }
 
-// Text Already In A Variable Is Used Directly
+// Direct Variable
 fn source(text: &[Part], temporary: &str) -> Result<(String, String), RosellaError> {
     match text {
         [Part::Var(name)] => Ok((String::new(), name.clone())),
@@ -833,26 +982,9 @@ fn negate(condition: Condition) -> Condition {
     }
 }
 
-// Percent Signs Are Doubled In A Batch File
+// Double Percents
 fn arithmetic(value: &Arith) -> String {
     value.text.replace('%', "%%")
-}
-
-fn command_variables(command: &[Vec<Part>]) -> Result<(String, Vec<String>), RosellaError> {
-    let mut output = String::new();
-    let mut names = Vec::new();
-
-    for (index, part) in command.iter().enumerate() {
-        let name = if index == 0 {
-            "rosella_command".to_string()
-        } else {
-            format!("rosella_argument{}", index)
-        };
-        output.push_str(&format!("set \"{}={}\"\n", name, quoted(part)?));
-        names.push(name);
-    }
-
-    Ok((output, names))
 }
 
 fn loop_call(label: &LoopLabel, check: ReturnCheck) -> String {
@@ -867,7 +999,7 @@ fn loop_call(label: &LoopLabel, check: ReturnCheck) -> String {
     output
 }
 
-// Only Code That Can Stop The Script Passes The Exit Along
+// Exit Check
 fn call(label: &str, exits: bool) -> String {
     if exits {
         format!(
@@ -879,7 +1011,7 @@ fn call(label: &str, exits: bool) -> String {
     }
 }
 
-// Exit Through Every Caller
+// Exit Flag
 fn exit(code: &str, depth: usize) -> String {
     match (depth, code.parse::<i32>()) {
         (0, Ok(code)) => format!("exit /b {}\n", code),
@@ -888,7 +1020,7 @@ fn exit(code: &str, depth: usize) -> String {
     }
 }
 
-// Delayed Expansion Rescans Carets
+// Caret Rescan
 fn has_bang(parts: &[Part]) -> bool {
     parts.iter().any(|part| match part {
         Part::Text(text) => text.contains('!'),

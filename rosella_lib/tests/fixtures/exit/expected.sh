@@ -11,3 +11,4 @@ stop() {
 printf '%s\n' "before"
 stop
 printf '%s\n' "SHOULD NOT PRINT"
+exit 0

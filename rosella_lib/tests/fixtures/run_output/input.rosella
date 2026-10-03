@@ -1,0 +1,28 @@
+let str name = run_output("git", "-c", "fixture.name=Hello & 50% (done)", "config", "--get", "fixture.name");
+print("name: ", name);
+
+/* First Line */
+let str first = run_output("git", "-c", "a.b=1", "-c", "a.c=2", "config", "--get-regexp", "^a[.]");
+print("first line: ", first);
+
+if run_output("git", "config", "--file", "missing.cfg", "--get", "x.y") == "" { print("empty output"); }
+print("inline: ", run_output("git", "-c", "x.y=inline", "config", "--get", "x.y"));
+
+/* Special Characters Survive */
+print("special: ", run_output("git", "-c", "x.y=Done! 100% ^ caret", "config", "--get", "x.y"));
+print("plain caret: ", run_output("git", "-c", "x.y=a ^ b", "config", "--get", "x.y"));
+print("percent name: ", run_output("git", "-c", "x.y=%PATH% stays", "config", "--get", "x.y"));
+print("backslash: ", run_output("git", "-c", "x.y=C:\\dir\\", "config", "--get", "x.y"));
+let str folder = "C:\\data\\\\";
+print("backslashes: ", run_output("git", "-c", concat("x.y=", folder), "config", "--get", "x.y"));
+run("git", "-c", concat("x.y=run ", folder), "config", "--get", "x.y");
+
+/* Quotes And Blanks */
+write_file("q.cfg", "[x]\n\tz = plain \\\" & echo INJECTED & rem \\\"\n\tm =\n\tm = second");
+print("quotes: ", run_output("git", "config", "--file", "q.cfg", "--get", "x.z"));
+print("first line with text: [", run_output("git", "config", "--file", "q.cfg", "--get-all", "x.m"), "]");
+
+fn str setting(str key) {
+    return run_output("git", "-c", concat(key, "=from a function"), "config", "--get", key);
+}
+print(setting("demo.key"));

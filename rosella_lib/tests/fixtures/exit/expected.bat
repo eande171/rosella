@@ -5,15 +5,13 @@ echo(before
 call :stop
 if defined rosella_exit exit /b !rosella_exit!
 echo(SHOULD NOT PRINT
-goto :eof
+exit /b 0
 
 :rosella_while0
-set /a "rosella_temp1=i"
-if !rosella_temp1! LSS 5 goto :rosella_while0_body
+if !i! LSS 5 goto :rosella_while0_body
 goto :eof
 :rosella_while0_body
-    set /a "rosella_temp2=i"
-    if !rosella_temp2! EQU 2 (
+    if !i! EQU 2 (
         set /a "rosella_exit=3"
         goto :eof
     )

@@ -61,3 +61,4 @@ add "${rosella_result3}" "${rosella_result4}"
 rosella_result5="${rosella_return}"
 nested=$(( rosella_result5 - 1 ))
 printf '%s\n' "nested: ${nested}"
+exit 0

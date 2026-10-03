@@ -1,3 +1,5 @@
 #!/bin/bash
-read -r -p "" name
+printf '%s' "Name: "
+IFS= read -r name
 printf '%s\n' "Hello ${name}!"
+exit 0

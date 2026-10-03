@@ -54,8 +54,6 @@ impl Compiler {
             results: 0,
             function: None,
             exiting: HashSet::new(),
-            assigned: Vec::new(),
-            counters: Vec::new(),
             share_return: false,
         }
         .program(&statements)
@@ -75,12 +73,7 @@ struct Generator {
     loop_labels: Vec<LoopLabel>,
     results: usize,
     function: Option<Scope>,
-    // Functions That Can Stop The Script
     exiting: HashSet<String>,
-    // Variables Certain To Hold A Value Here
-    assigned: Vec<String>,
-    counters: Vec<String>,
-    // Only One Call Can Change The Returned Value
     share_return: bool,
 }
 
@@ -91,7 +84,6 @@ impl Generator {
         }
         self.exiting = exiting_functions(statements, self.os);
 
-        // The Script Folder Is Captured Before Anything Runs
         let mut names = Vec::new();
         for statement in statements {
             statement_calls(&statement.kind, &mut names);
@@ -100,17 +92,7 @@ impl Generator {
             self.backend.use_script_dir();
         }
 
-        // Top Level Assignments Always Run Before Later Statements
-        let mut body = String::new();
-        for statement in statements {
-            let compiled = self
-                .statement(&statement.kind)
-                .map_err(|error| error.located(statement.span))?;
-            body.push_str(&compiled);
-            if let Stmt::Let { name, .. } | Stmt::For { name, .. } = &statement.kind {
-                self.assigned.push(name.clone());
-            }
-        }
+        let body = self.block(statements)?;
         Ok(self.backend.program(body))
     }
 
@@ -130,7 +112,6 @@ impl Generator {
     fn body(&mut self, statements: &[Statement]) -> Result<String, RosellaError> {
         let body = self.block(statements)?;
 
-        // Placeholder For Empty Blocks
         if body.is_empty() {
             return Ok(indent(self.backend.empty_body()));
         }
@@ -147,7 +128,6 @@ impl Generator {
     }
 
     fn statement(&mut self, statement: &Stmt) -> Result<String, RosellaError> {
-        // A Call Being Made Runs After Its Arguments
         self.share_return = match statement {
             Stmt::Let { value, .. }
             | Stmt::Assign { value, .. }
@@ -256,11 +236,11 @@ impl Generator {
                 let start = self.hoist(start, &mut output)?;
                 let start = self.arith(&start)?;
 
-                // The End Is Worked Out Once
+                // Fixed End
                 let end = self.hoist(end, &mut output)?;
                 let end = match end {
                     Expr::Number(_) => self.arith(&end)?,
-                    // A Fresh Result Is Already A Copy
+                    // Fresh Result
                     Expr::Identifier(ref result) if result.starts_with("rosella_result") => {
                         self.arith(&end)?
                     }
@@ -274,9 +254,7 @@ impl Generator {
                     }
                 };
 
-                self.counters.push(variable.clone());
                 let body = self.loop_body(&label, body);
-                self.counters.pop();
                 output.push_str(
                     &self
                         .backend
@@ -314,13 +292,13 @@ impl Generator {
         let mut output = String::new();
 
         let value = match value {
-            // Produce Straight Into The Variable
+            // Direct Result
             Expr::Call { name: call, args } if is_produced(call) => {
                 let lines = self.produce(call, args, name, false, &mut output)?;
                 output.push_str(&lines);
                 return Ok(output);
             }
-            // Copy The Returned Value
+            // Returned Value
             Expr::Call { name: call, args } if is_user_function(call) => {
                 let call = self.user_call(call, args, &mut output)?;
                 output.push_str(&call);
@@ -347,7 +325,7 @@ impl Generator {
         if let Some(value) = value {
             let returns = self.function.as_ref().and_then(|scope| scope.returns);
             match (value, returns) {
-                // Callee Already Set The Value
+                // Value Already Set
                 (Expr::Call { name, args }, _) if is_user_function(name) => {
                     let call = self.user_call(name, args, &mut output)?;
                     output.push_str(&call);
@@ -367,7 +345,6 @@ impl Generator {
         Ok(output)
     }
 
-    // Flatten Else If Chains
     fn if_chain(&mut self, statement: &Stmt) -> Result<String, RosellaError> {
         let mut branches = Vec::new();
         let mut current = statement;
@@ -384,7 +361,7 @@ impl Generator {
                 return Err(error("Expected an if statement"));
             };
 
-            // Else If Errors Point At Their Own Line
+            // Branch Error Line
             let condition = self.condition(resolved).map_err(|error| match span {
                 Some(span) => error.located(span),
                 None => error,
@@ -447,7 +424,7 @@ impl Generator {
         self.backend.condition(logic)
     }
 
-    // Each Test Runs Its Own Calls
+    // Test Setup
     fn logic(&mut self, condition: &Condition) -> Result<Logic, RosellaError> {
         let mut setup = String::new();
 
@@ -564,6 +541,12 @@ impl Generator {
         }
         let args = hoisted.as_slice();
 
+        if signature.builtin == Builtin::Run {
+            let command = self.command(args)?;
+            output.push_str(&self.backend.run(&command)?);
+            return Ok(output);
+        }
+
         let backend = &self.backend;
         let statement = match signature.builtin {
             Builtin::Print => backend.print(&self.concat_parts(args)?),
@@ -588,14 +571,14 @@ impl Generator {
                 signature.builtin == Builtin::AppendFile,
             ),
             Builtin::Exit => Ok(backend.exit(&self.arith(&args[0])?, self.depth)),
-            Builtin::Run => backend.run(&self.command(args)?),
             Builtin::Sleep => Ok(backend.sleep(&self.arith(&args[0])?)),
             Builtin::SetEnv => match &args[0] {
                 Expr::String(variable) => backend.set_env(variable, &self.value_parts(&args[1])?),
                 _ => Err(error("set_env() needs the variable name written in quotes")),
             },
             Builtin::Read
-            | Builtin::Output
+            | Builtin::Run
+            | Builtin::RunOutput
             | Builtin::Arg
             | Builtin::ArgCount
             | Builtin::Env
@@ -653,7 +636,6 @@ impl Generator {
             .call(name, &values, self.exiting.contains(name))
     }
 
-    // Built-ins That Run Before Their Statement
     fn produce(
         &mut self,
         name: &str,
@@ -685,7 +667,8 @@ impl Generator {
                 for arg in &hoisted {
                     converted.push(self.stringify(arg, setup)?);
                 }
-                let mut lines = self.backend.run(&self.command(&converted)?)?;
+                let command = self.command(&converted)?;
+                let mut lines = self.backend.run(&command)?;
                 lines.push_str(&self.backend.capture_status(target, local));
                 Ok(lines)
             }
@@ -728,13 +711,13 @@ impl Generator {
                 let max = self.arith(&hoisted[1])?;
                 Ok(self.backend.random(&min, &max, target, local))
             }
-            Some(Builtin::Output) => {
+            Some(Builtin::RunOutput) => {
                 let mut converted = Vec::new();
                 for arg in &hoisted {
                     converted.push(self.stringify(arg, setup)?);
                 }
-                self.backend
-                    .output(&self.command(&converted)?, target, local)
+                let command = self.command(&converted)?;
+                self.backend.run_output(&command, target, local)
             }
             _ => Err(error(format!(
                 "{}() cannot be produced into a variable",
@@ -844,7 +827,7 @@ fn exiting_functions(statements: &[Statement], os: OS) -> HashSet<String> {
         })
         .collect();
 
-    // Repeat Until Callers Of Exiting Functions Are All Found
+    // Find Callers
     let mut exiting = HashSet::new();
     loop {
         let before = exiting.len();
@@ -890,7 +873,7 @@ fn definitions<'a>(
     }
 }
 
-// Calls Made When These Statements Run
+// Runtime Calls
 fn run_calls(statements: &[Statement], os: OS, names: &mut Vec<String>) {
     for statement in statements {
         match &statement.kind {
@@ -926,7 +909,7 @@ fn run_calls(statements: &[Statement], os: OS, names: &mut Vec<String>) {
     }
 }
 
-// Built-ins That Can End The Script
+// Stopping Built-ins
 fn stops_script(name: &str) -> bool {
     builtins::find(name).is_some_and(|signature| {
         matches!(
@@ -948,7 +931,7 @@ fn count_calls(expr: &Expr) -> usize {
     }
 }
 
-// Every Call Name Anywhere In The Program
+// All Calls
 fn statement_calls(statement: &Stmt, names: &mut Vec<String>) {
     let body_calls = |body: &[Statement], names: &mut Vec<String>| {
         for inner in body {
@@ -1036,7 +1019,7 @@ fn is_produced(name: &str) -> bool {
             signature.builtin,
             Builtin::Read
                 | Builtin::Run
-                | Builtin::Output
+                | Builtin::RunOutput
                 | Builtin::Arg
                 | Builtin::ArgCount
                 | Builtin::Length
@@ -1182,9 +1165,9 @@ mod tests {
         assert!(!bash(source).contains("for"));
         let output = try_compile(source, OS::Windows, Shell::Batch).unwrap();
         assert!(output.contains(
-            "for /f \"delims=*?\" %%w in (\"x!p!x\") do if \"%%w\"==\"x!p!x\" if exist \"!p!\" del /f /q \"!p!\"\r\n"
+            "set \"rosella_wild=\" & for /f \"tokens=2 delims=*?\" %%w in (\"x!p!x\") do set \"rosella_wild=1\"\r\nif not defined rosella_wild if exist \"!p!\" if not exist \"!p!\\\" del /f /q \"!p!\"\r\n"
         ));
-        assert!(output.contains("if exist \"y\" del /f /q \"y\"\r\n"));
+        assert!(output.contains("\r\nif exist \"y\" if not exist \"y\\\" del /f /q \"y\"\r\n"));
     }
 
     #[test]
@@ -1204,17 +1187,42 @@ mod tests {
     }
 
     #[test]
-    fn batch_compares_known_numbers_directly() {
+    fn batch_compares_variables_directly() {
         let output = try_compile(
-            "let int x = 1;\nif x == 1 { }\nif !(x == 2) { }\nfn f(int n) { if n > x { } }",
+            "let int x = 1;\nif x == 1 { }\nif !(x == 2) { }\nfn f(int n) { if n > x { } }\nif x + 1 == 2 { }",
             OS::Windows,
             Shell::Batch,
         )
         .unwrap();
         assert!(output.contains("if !x! EQU 1 ("));
         assert!(output.contains("if not !x! EQU 2 ("));
-        assert!(output.contains("set /a \"rosella_temp"));
-        assert!(output.contains("if !rosella_f.n! GTR !rosella_temp"));
+        assert!(output.contains("if !rosella_f.n! GTR !x! ("));
+        assert!(output.contains("set /a \"rosella_temp0=x + 1\"\r\nif !rosella_temp0! EQU 2 ("));
+    }
+
+    #[test]
+    fn batch_keeps_its_variables_out_of_the_window() {
+        let output = try_compile("print(arg(1));", OS::Windows, Shell::Batch).unwrap();
+        assert!(output.starts_with("@echo off\r\nsetlocal\r\nset \"rosella_argc=0\"\r\n"));
+        let output = try_compile("print(1);", OS::Windows, Shell::Batch).unwrap();
+        assert!(output.starts_with("@echo off\r\nsetlocal enabledelayedexpansion\r\n"));
+        assert!(output.ends_with("exit /b 0\r\n"));
+        assert!(bash("print(1);").ends_with("exit 0\n"));
+    }
+
+    #[test]
+    fn remove_only_touches_its_own_kind() {
+        let output = try_compile(
+            "remove(\"a\");\nremove_dir(\"b\");",
+            OS::Windows,
+            Shell::Batch,
+        )
+        .unwrap();
+        assert!(output.contains("if exist \"a\" if not exist \"a\\\" del /f /q \"a\"\r\n"));
+        assert!(output.contains("if exist \"b\\\" rmdir /s /q \"b\"\r\n"));
+        let output = bash("remove(\"a\");\nremove_dir(\"b\");");
+        assert!(output.contains("if [[ ! -d \"a\" ]]; then rm -f -- \"a\"; fi\n"));
+        assert!(output.contains("if [[ -d \"b\" ]]; then rm -rf -- \"b\"; fi\n"));
     }
 
     #[test]

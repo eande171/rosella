@@ -1,4 +1,10 @@
 #!/bin/bash
+dot() {
+    rosella_return="."
+}
+other() {
+    rosella_return="other"
+}
 first_log() {
     for file in "data/"*".log"; do
         [[ -f "${file}" ]] || continue
@@ -71,8 +77,39 @@ for file in "data/"*".none"; do
     [[ -f "${file}" ]] || continue
     printf '%s\n' "SHOULD NOT PRINT"
 done
+printf '%s\n' "x" > "data/wow!.md"
+printf '%s\n' "x" > "data/a^b!c.md"
+printf '%s\n' "x" > "data/50% ^ plain.md"
+kept=0
+for file in "data/"*".md"; do
+    [[ -f "${file}" ]] || continue
+    if [[ -f "${file}" ]]; then
+        kept=$(( kept + 1 ))
+    fi
+    if [[ "${file}" == "data/wow!.md" ]]; then
+        printf '%s\n' "found wow!.md"
+    fi
+done
+printf '%s\n' "names kept: ${kept}"
+dotted=0
+for file in "data/."*; do
+    [[ -f "${file}" ]] || continue
+    dotted=$(( dotted + 1 ))
+done
+printf '%s\n' "dot names: ${dotted}"
+printf '%s\n' "x" > "data/.second"
+both=0
+dot
+for file in "data/""${rosella_return}"*; do
+    [[ -f "${file}" ]] || continue
+    other
+    changed="${rosella_return}"
+    both=$(( both + 1 ))
+done
+printf '%s\n' "dot names from a call: ${both}"
 if first_log; [[ "${rosella_return}" == "data/c.log" ]]; then
     printf '%s\n' "returned from a files loop"
 fi
 square_root "49"
 printf '%s\n' "square root of 49: ${rosella_return}"
+exit 0

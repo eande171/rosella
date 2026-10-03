@@ -14,7 +14,7 @@ if !exists("missing.txt") && x == 2 { print("file and int: yes"); }
 if x == 9 || x == 2 && name == "Bob" { print("and binds tighter"); }
 if !!(x == 2) { print("double not"); }
 
-/* Right Side Only When Needed */
+/* Short Circuit */
 if x == 9 && noisy(1) == 1 { print("SHOULD NOT PRINT"); }
 if x == 2 || noisy(2) == 2 { print("or stopped early"); }
 if x == 2 && noisy(3) == 3 { print("and ran both"); }
@@ -44,7 +44,7 @@ while outer < 2 {
     outer = outer + 1;
 }
 
-/* Conditions Run Again Each Pass */
+/* Repeated Conditions */
 let int n = 0;
 while n < 5 && noisy(n) != 3 { n = n + 1; }
 print("stopped at ", n);

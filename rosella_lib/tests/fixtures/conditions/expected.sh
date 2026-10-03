@@ -22,3 +22,4 @@ fi
 if [[ ! -e "missing.txt" ]]; then
     printf '%s\n' "no file"
 fi
+exit 0

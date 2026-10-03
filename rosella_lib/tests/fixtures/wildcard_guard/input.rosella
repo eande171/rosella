@@ -1,4 +1,4 @@
-/* Wildcards In Variables Match Nothing */
+/* Variable Wildcards */
 make_dir("data");
 write_file(path("data", "keep.txt"), "x");
 let str pattern = "*.txt";

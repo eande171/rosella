@@ -96,9 +96,9 @@ call :rosella_while14
 set /a "outer=0"
 call :rosella_while16
 set /a "n=0"
-call :rosella_while19
+call :rosella_while18
 echo(stopped at !n!
-goto :eof
+exit /b 0
 
 :noisy
     set "rosella_noisy.value=!rosella_arg1!"
@@ -126,8 +126,7 @@ if 1 EQU 1 goto :rosella_while17_body
 goto :eof
 :rosella_while17_body
     set /a "inner=inner + 1"
-    set /a "rosella_temp18=inner"
-    if !rosella_temp18! GTR 2 (
+    if !inner! GTR 2 (
         goto :eof
     )
 goto :rosella_while17
@@ -142,18 +141,18 @@ goto :eof
     set /a "outer=outer + 1"
 goto :rosella_while16
 
-:rosella_while19
+:rosella_while18
+set "rosella_condition19="
 set "rosella_condition20="
-set "rosella_condition21="
-if !n! LSS 5 set "rosella_condition21=1"
-if defined rosella_condition21 (
+if !n! LSS 5 set "rosella_condition20=1"
+if defined rosella_condition20 (
     set "rosella_arg1=!n!"
     call :noisy
-    if !rosella_return! NEQ 3 set "rosella_condition20=1"
+    if !rosella_return! NEQ 3 set "rosella_condition19=1"
 )
-if defined rosella_condition20 goto :rosella_while19_body
+if defined rosella_condition19 goto :rosella_while18_body
 goto :eof
-:rosella_while19_body
+:rosella_while18_body
     set /a "n=n + 1"
-goto :rosella_while19
+goto :rosella_while18
 

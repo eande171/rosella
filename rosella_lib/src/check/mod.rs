@@ -33,7 +33,7 @@ struct Checker {
     variables: HashMap<String, Type>,
     functions: HashMap<String, Function>,
     parameters: Parameters,
-    // Outer None Means Top Level
+    // Top Level None
     returns: Option<Option<Type>>,
     loops: usize,
 }
@@ -73,7 +73,7 @@ impl Checker {
                     body,
                     ..
                 } => {
-                    // Loops Can Share A Variable Of The Same Type
+                    // Shared Loop Variable
                     if self.variables.get(name.as_str()) != Some(variable_type) {
                         self.declare_variable(name, *variable_type, parameters)?;
                     }
@@ -121,7 +121,7 @@ impl Checker {
         }
         names::check_variable_name(name)?;
 
-        // Batch Ignores Case In Names
+        // Case Clash
         if let Some(other) = self
             .variables
             .keys()
@@ -161,7 +161,7 @@ impl Checker {
         names::check_function_name(name)?;
         names::check_shell_command(name)?;
 
-        // Batch Ignores Case In Names
+        // Case Clash
         if let Some(other) = self
             .functions
             .keys()
@@ -377,7 +377,7 @@ impl Checker {
 
     fn builtin(&self, name: &str, args: &[Expr]) -> Result<&'static Signature, RosellaError> {
         let Some(signature) = builtins::find(name) else {
-            // Older Typed Condition Form
+            // Old Syntax
             if matches!(name, "range" | "files") {
                 return Err(error(format!("{}() can only be used in a for loop", name)));
             }
@@ -428,7 +428,7 @@ impl Checker {
                     )));
                 }
 
-                // Batch Ignores Case In Names
+                // Case Clash
                 let clash = self
                     .variables
                     .keys()
@@ -457,7 +457,7 @@ impl Checker {
                     return Err(error("Arguments are counted from 1, like arg(1)"));
                 }
             }
-            // Batch Expands Wildcards Even In Quotes
+            // Wildcard Paths
             Builtin::Cd
             | Builtin::MakeDir
             | Builtin::Remove
@@ -568,7 +568,7 @@ impl Checker {
         }
     }
 
-    // File Checks Only In Conditions
+    // Conditions Only
     fn value_type(&self, expr: &Expr) -> Result<Type, RosellaError> {
         match self.expr_type(expr)? {
             Type::Check => Err(error(format!(
@@ -698,7 +698,7 @@ fn error(message: impl Into<String>) -> RosellaError {
     RosellaError::compiler(message)
 }
 
-// Numbers Can Become Text
+// Number To Text
 fn assignable(target: Type, value: Type, context: &str) -> Result<(), RosellaError> {
     if target == Type::Int && value == Type::Str {
         return Err(error(format!("{} and cannot take a str value", context)));
@@ -983,7 +983,8 @@ if is_dir(d) && !is_file(d) { }"
             check_error("let str c = contains(\"a\", \"b\");")
                 .contains("only be used as an if or while condition")
         );
-        assert!(check_error("output(\"git\");").contains("cannot be used as a statement"));
+        assert!(check_error("run_output(\"git\");").contains("cannot be used as a statement"));
+        assert!(check_error("let str s = output(\"git\");").contains("Unknown function 'output'"));
         assert!(check_error("length(\"a\");").contains("cannot be used as a statement"));
     }
 
@@ -1002,8 +1003,32 @@ if is_dir(d) && !is_file(d) { }"
     fn function_names_that_break_a_shell_are_rejected() {
         assert!(check_error("fn mkdir() { }").contains("would replace a command"));
         assert!(check_error("fn printf() { }").contains("would replace a command"));
+        assert!(check_error("fn coproc() { }").contains("would replace a command"));
         assert!(check_error("fn Greet() { }\nfn greet() { }").contains("same in Batch"));
         assert!(check_error("fn f(int a, int A) { }").contains("two parameters"));
+    }
+
+    #[test]
+    fn variable_names_special_to_a_shell_are_rejected() {
+        for name in [
+            "GROUPS",
+            "SHELLOPTS",
+            "GLOBIGNORE",
+            "BASH_VERSION",
+            "LC_ALL",
+            "PS1",
+        ] {
+            let source = format!("let str {} = \"x\";", name);
+            assert!(
+                check_error(&source).contains("environment variable of the shell"),
+                "{}",
+                name
+            );
+        }
+        assert!(
+            checked("let str groups = \"x\";\nlet str HISTORY = \"y\";\nlet int PSIZE = 1;")
+                .is_ok()
+        );
     }
 
     #[test]

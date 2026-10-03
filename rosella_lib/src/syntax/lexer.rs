@@ -11,7 +11,7 @@ pub struct Lexer {
 
 impl Lexer {
     pub fn new(input: &str) -> Self {
-        // Strip Byte Order Mark
+        // Strip BOM
         let input = input.strip_prefix('\u{FEFF}').unwrap_or(input);
         let characters: Vec<char> = input.chars().collect();
         let current = characters.first().copied();
@@ -52,7 +52,7 @@ impl Lexer {
         let start = self.span();
         let mut string: String = String::new();
 
-        // Capture Decimals For The Error
+        // Capture Decimals
         while let Some(ch) = self.current_character {
             let decimal = ch == '.' && self.peek().is_some_and(|next| next.is_ascii_digit());
             if ch.is_ascii_digit() || decimal {
@@ -63,7 +63,7 @@ impl Lexer {
             }
         }
 
-        // Batch Uses 32 Bit Integers
+        // 32 Bit Limit
         match string.parse::<i64>() {
             Ok(number) if number <= i32::MAX as i64 => Ok(number),
             _ => Err(RosellaError::InvalidNumber(string, start)),
@@ -103,7 +103,6 @@ impl Lexer {
         Err(RosellaError::UnterminatedString(start))
     }
 
-    // Raw Line Until Last Semicolon
     fn read_raw_instruction(&mut self, start: Span) -> Result<Token, RosellaError> {
         let line_end = self.input[self.position..]
             .iter()

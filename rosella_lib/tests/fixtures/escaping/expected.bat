@@ -10,3 +10,4 @@ echo(!c!
 echo(multi
 echo(line
 echo(
+exit /b 0

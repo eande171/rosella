@@ -31,7 +31,7 @@ if !rosella_return! EQU 4 (
     echo(four
 )
 set /a "n=0"
-call :rosella_while3
+call :rosella_while2
 echo(n: !n!
 set "rosella_arg1=50"
 call :first_square_over
@@ -50,7 +50,7 @@ call :add
 set "rosella_result5=!rosella_return!"
 set /a "nested=rosella_result5 - 1"
 echo(nested: !nested!
-goto :eof
+exit /b 0
 
 :add
     set "rosella_add.a=!rosella_arg1!"
@@ -68,12 +68,11 @@ goto :eof
     goto :eof
 
 :rosella_while0
-set /a "rosella_temp1=i"
-if !rosella_temp1! LSS 100 goto :rosella_while0_body
+if !i! LSS 100 goto :rosella_while0_body
 goto :eof
 :rosella_while0_body
-    set /a "rosella_temp2=i * i"
-    if !rosella_temp2! GTR !rosella_first_square_over.limit! (
+    set /a "rosella_temp1=i * i"
+    if !rosella_temp1! GTR !rosella_first_square_over.limit! (
         set /a "rosella_return=i"
         set "rosella_returning=1"
         goto :eof
@@ -98,13 +97,13 @@ goto :rosella_while0
     set /a "rosella_return=rosella_return * 2"
     goto :eof
 
-:rosella_while3
+:rosella_while2
 set "rosella_arg1=!n!"
 set "rosella_arg2=0"
 call :add
-if !rosella_return! LSS 3 goto :rosella_while3_body
+if !rosella_return! LSS 3 goto :rosella_while2_body
 goto :eof
-:rosella_while3_body
+:rosella_while2_body
     set /a "n=n + 1"
-goto :rosella_while3
+goto :rosella_while2
 
