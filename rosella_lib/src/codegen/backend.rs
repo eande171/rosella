@@ -46,6 +46,9 @@ pub enum Test {
         text: Vec<Part>,
         part: Vec<Part>,
     },
+    IsNumber {
+        text: Vec<Part>,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -178,6 +181,7 @@ pub trait Backend {
     ) -> Result<String, RosellaError>;
     fn set_env(&self, name: &str, value: &[Part]) -> Result<String, RosellaError>;
 
+    fn number(&mut self, text: &[Part], target: &str, local: bool) -> Result<String, RosellaError>;
     fn length(&mut self, text: &[Part], target: &str, local: bool) -> Result<String, RosellaError>;
     fn slice(
         &mut self,

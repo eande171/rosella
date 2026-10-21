@@ -18,6 +18,7 @@ pub struct Batch {
     uses_keep: bool,
     uses_capture: bool,
     uses_slashes: bool,
+    uses_number: bool,
 }
 
 impl Batch {
@@ -142,6 +143,17 @@ impl Batch {
                 Ok(Condition {
                     setup,
                     test: "defined rosella_found".to_string(),
+                })
+            }
+            Test::IsNumber { text } => {
+                self.uses_number = true;
+                setup.push_str(&format!(
+                    "set \"rosella_text={}\"\ncall :rosella_number\n",
+                    quoted(&text)?
+                ));
+                Ok(Condition {
+                    setup,
+                    test: "defined rosella_valid".to_string(),
                 })
             }
         }
@@ -307,6 +319,9 @@ impl Backend for Batch {
         }
         if self.uses_slashes {
             helpers.push_str(SLASHES_HELPER);
+        }
+        if self.uses_number {
+            helpers.push_str(NUMBER_HELPER);
         }
 
         // Default Exit Code
@@ -718,6 +733,20 @@ impl Backend for Batch {
         Ok(format!("set \"{}={}\"\n", name, quoted(value)?))
     }
 
+    fn number(
+        &mut self,
+        text: &[Part],
+        target: &str,
+        _local: bool,
+    ) -> Result<String, RosellaError> {
+        self.uses_number = true;
+        Ok(format!(
+            "set \"rosella_text={}\"\ncall :rosella_number {}\n",
+            quoted(text)?,
+            target
+        ))
+    }
+
     fn length(
         &mut self,
         text: &[Part],
@@ -829,6 +858,38 @@ impl Backend for Batch {
 }
 
 // Helper Functions
+
+const NUMBER_HELPER: &str = concat!(
+    ":rosella_number\n",
+    "set \"rosella_valid=\"\n",
+    "set \"rosella_value=0\"\n",
+    "set \"rosella_sign=\"\n",
+    "set \"rosella_digits=!rosella_text!\"\n",
+    ":rosella_number_trim\n",
+    "if not defined rosella_digits goto :rosella_number_done\n",
+    "for %%s in (\" \" \"\t\") do (\n",
+    "    if \"!rosella_digits:~0,1!\"==%%s (set \"rosella_digits=!rosella_digits:~1!\" & goto :rosella_number_trim)\n",
+    "    if \"!rosella_digits:~-1!\"==%%s (set \"rosella_digits=!rosella_digits:~0,-1!\" & goto :rosella_number_trim)\n",
+    ")\n",
+    "if \"!rosella_digits:~0,1!\"==\"-\" (\n",
+    "    set \"rosella_sign=-\"\n",
+    "    set \"rosella_digits=!rosella_digits:~1!\"\n",
+    ")\n",
+    "if not defined rosella_digits goto :rosella_number_done\n",
+    "for /f delims^=0123456789^ eol^= %%a in (\"!rosella_digits!\") do goto :rosella_number_done\n",
+    ":rosella_number_zeros\n",
+    "if \"!rosella_digits:~0,1!\"==\"0\" if not \"!rosella_digits!\"==\"0\" (\n",
+    "    set \"rosella_digits=!rosella_digits:~1!\"\n",
+    "    goto :rosella_number_zeros\n",
+    ")\n",
+    "if not \"!rosella_digits:~10,1!\"==\"\" goto :rosella_number_done\n",
+    "if not \"!rosella_digits:~9,1!\"==\"\" if \"!rosella_digits!\" GTR \"2147483647\" goto :rosella_number_done\n",
+    "set \"rosella_valid=1\"\n",
+    "set /a \"rosella_value=!rosella_sign!!rosella_digits!\"\n",
+    ":rosella_number_done\n",
+    "if not \"%~1\"==\"\" set \"%~1=!rosella_value!\"\n",
+    "goto :eof\n\n",
+);
 
 const LENGTH_HELPER: &str = concat!(
     ":rosella_length\n",

@@ -492,6 +492,14 @@ impl Generator {
                             setup,
                         });
                     }
+                    "is_number" => {
+                        return Ok(Logic::Test {
+                            test: Test::IsNumber {
+                                text: self.value_parts(&converted[0])?,
+                            },
+                            setup,
+                        });
+                    }
                     "not_exists" => FileCheck::Missing,
                     "is_dir" => FileCheck::Directory,
                     "is_file" => FileCheck::File,
@@ -590,6 +598,8 @@ impl Generator {
             | Builtin::IsDir
             | Builtin::IsFile
             | Builtin::Contains
+            | Builtin::IsNumber
+            | Builtin::Number
             | Builtin::Length
             | Builtin::Slice
             | Builtin::Replace
@@ -671,6 +681,11 @@ impl Generator {
                 let mut lines = self.backend.run(&command)?;
                 lines.push_str(&self.backend.capture_status(target, local));
                 Ok(lines)
+            }
+            Some(Builtin::Number) => {
+                let text = self.stringify(&hoisted[0], setup)?;
+                let text = self.value_parts(&text)?;
+                self.backend.number(&text, target, local)
             }
             Some(Builtin::Length) => {
                 let text = self.stringify(&hoisted[0], setup)?;
@@ -1022,6 +1037,7 @@ fn is_produced(name: &str) -> bool {
                 | Builtin::RunOutput
                 | Builtin::Arg
                 | Builtin::ArgCount
+                | Builtin::Number
                 | Builtin::Length
                 | Builtin::Slice
                 | Builtin::Replace

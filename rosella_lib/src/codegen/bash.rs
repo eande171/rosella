@@ -11,6 +11,7 @@ pub struct Bash {
     functions: String,
     uses_arguments: bool,
     uses_script_dir: bool,
+    uses_number: bool,
 }
 
 impl Backend for Bash {
@@ -25,10 +26,11 @@ impl Backend for Bash {
         } else {
             ""
         };
+        let number = if self.uses_number { NUMBER_HELPER } else { "" };
         // Functions First
         format!(
-            "#!/bin/bash\n{}{}{}{}exit 0\n",
-            script_dir, arguments, self.functions, body
+            "#!/bin/bash\n{}{}{}{}{}exit 0\n",
+            script_dir, arguments, number, self.functions, body
         )
     }
 
@@ -53,6 +55,9 @@ impl Backend for Bash {
     }
 
     fn condition(&mut self, logic: Logic) -> Result<Condition, RosellaError> {
+        if checks_number(&logic) {
+            self.uses_number = true;
+        }
         Ok(Condition {
             setup: String::new(),
             test: render(&logic, true),
@@ -323,6 +328,17 @@ impl Backend for Bash {
         Ok(format!("export {}={}\n", name, quote(value, false)))
     }
 
+    fn number(&mut self, text: &[Part], target: &str, local: bool) -> Result<String, RosellaError> {
+        self.uses_number = true;
+        let keyword = if local { "local " } else { "" };
+        Ok(format!(
+            "rosella_number {text}\n{keyword}{target}=${{rosella_value}}\n",
+            text = quote(text, false),
+            keyword = keyword,
+            target = target
+        ))
+    }
+
     fn length(&mut self, text: &[Part], target: &str, local: bool) -> Result<String, RosellaError> {
         let keyword = if local { "local " } else { "" };
         let (setup, source) = source(text, keyword);
@@ -496,8 +512,33 @@ fn test_text(test: &Test) -> String {
         Test::Contains { text, part } => {
             format!("[[ {} == *{}* ]]", quote(text, false), quote(part, false))
         }
+        Test::IsNumber { text } => format!("rosella_number {}", quote(text, false)),
     }
 }
+
+fn checks_number(logic: &Logic) -> bool {
+    match logic {
+        Logic::Test { test, .. } => matches!(test, Test::IsNumber { .. }),
+        Logic::Not(inner) => checks_number(inner),
+        Logic::And(left, right) | Logic::Or(left, right) => {
+            checks_number(left) || checks_number(right)
+        }
+    }
+}
+
+const NUMBER_HELPER: &str = concat!(
+    "rosella_number() {\n",
+    "    rosella_value=0\n",
+    "    local rosella_trimmed=\"${1#\"${1%%[![:blank:]]*}\"}\"\n",
+    "    rosella_trimmed=\"${rosella_trimmed%\"${rosella_trimmed##*[![:blank:]]}\"}\"\n",
+    "    local rosella_digits=\"${rosella_trimmed#-}\"\n",
+    "    [[ \"${rosella_digits}\" =~ ^[0-9]+$ ]] || return 1\n",
+    "    rosella_digits=\"${rosella_digits#\"${rosella_digits%%[!0]*}\"}\"\n",
+    "    rosella_digits=\"${rosella_digits:-0}\"\n",
+    "    if (( ${#rosella_digits} > 10 )) || { (( ${#rosella_digits} == 10 )) && [[ \"${rosella_digits}\" > \"2147483647\" ]]; }; then return 1; fi\n",
+    "    if [[ \"${rosella_trimmed}\" == -* ]]; then rosella_value=$(( -rosella_digits )); else rosella_value=$(( rosella_digits )); fi\n",
+    "}\n",
+);
 
 // Unquoted Wildcards
 fn glob(parts: &[Part]) -> String {

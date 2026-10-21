@@ -989,6 +989,25 @@ if is_dir(d) && !is_file(d) { }"
     }
 
     #[test]
+    fn text_becomes_a_number() {
+        assert!(
+            checked(
+                "let int n = number(arg(1)) + 1;
+if is_number(arg(2)) && number(arg(2)) > n { }
+exit(number(\"3\"));"
+            )
+            .is_ok()
+        );
+        assert!(check_error("let int n = arg(1);").contains("cannot take a str value"));
+        assert!(check_error("number(\"5\");").contains("cannot be used as a statement"));
+        assert!(
+            check_error("let int n = is_number(\"5\");")
+                .contains("only be used as an if or while condition")
+        );
+        assert!(check_error("let int n = number();").contains("number(arg(1))"));
+    }
+
+    #[test]
     fn wildcards_only_work_in_files() {
         assert!(
             check_error("remove(\"*.txt\");").contains("Wildcards like * only work in files()")
