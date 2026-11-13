@@ -674,6 +674,14 @@ impl Backend for Batch {
 
     // Clear Before Prompt
     fn read(&self, prompt: &[Part], variable: &str, _local: bool) -> Result<String, RosellaError> {
+        // Target Cleared First
+        if prompt.contains(&Part::Var(variable.to_string())) {
+            return Ok(format!(
+                "set \"rosella_prompt={prompt}\"\nset \"{variable}=\"\nset /p \"{variable}=!rosella_prompt!\"\n",
+                variable = variable,
+                prompt = quoted(prompt)?
+            ));
+        }
         Ok(format!(
             "set \"{variable}=\"\nset /p \"{variable}={prompt}\"\n",
             variable = variable,
@@ -754,7 +762,7 @@ impl Backend for Batch {
         _local: bool,
     ) -> Result<String, RosellaError> {
         self.uses_length = true;
-        let (setup, source) = source(text, "rosella_measure")?;
+        let (setup, source) = source(text, "rosella_measure", target)?;
         Ok(format!(
             "{}call :rosella_length {} {}\n",
             setup, target, source
@@ -769,7 +777,7 @@ impl Backend for Batch {
         target: &str,
         _local: bool,
     ) -> Result<String, RosellaError> {
-        let (mut output, source) = source(text, "rosella_text")?;
+        let (mut output, source) = source(text, "rosella_text", target)?;
         let start_value = self.int_number(start, &mut output);
         let count_value = self.int_number(count, &mut output);
         output.push_str(&format!("set \"{}=\"\n", target));
@@ -1022,9 +1030,10 @@ fn wildcard_guard(path: &[Part]) -> String {
 }
 
 // Direct Variable
-fn source(text: &[Part], temporary: &str) -> Result<(String, String), RosellaError> {
+fn source(text: &[Part], temporary: &str, target: &str) -> Result<(String, String), RosellaError> {
     match text {
-        [Part::Var(name)] => Ok((String::new(), name.clone())),
+        // Target Cleared First
+        [Part::Var(name)] if name != target => Ok((String::new(), name.clone())),
         _ => Ok((
             format!("set \"{}={}\"\n", temporary, quoted(text)?),
             temporary.to_string(),

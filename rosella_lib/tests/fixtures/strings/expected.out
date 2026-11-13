@@ -9,6 +9,7 @@ words: one cat two cat
 special: 50% and (x)
 upper: HELLO WORLD lower: hello world
 accents stay: CAFé cafÉ
+shrunk: ell
 contains World
 case matters
 empty text is contained

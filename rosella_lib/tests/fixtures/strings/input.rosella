@@ -12,6 +12,13 @@ print("upper: ", upper(name), " lower: ", lower(name));
 
 print("accents stay: ", upper("café"), " ", lower("CAFÉ"));
 
+/* Self Assignment */
+let str shrink = "Hello World";
+shrink = slice(shrink, 0, 5);
+let int from = 1;
+shrink = slice(shrink, from, from + 2);
+print("shrunk: ", shrink);
+
 if contains(name, "World") { print("contains World"); }
 if !contains(name, "world") { print("case matters"); }
 if contains(name, "") { print("empty text is contained"); }

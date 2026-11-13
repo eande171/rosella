@@ -35,6 +35,11 @@ rosella_result13="${rosella_text^^[a-z]}"
 rosella_text="CAFÉ"
 rosella_result14="${rosella_text,,[A-Z]}"
 printf '%s\n' "accents stay: ${rosella_result13} ${rosella_result14}"
+shrink="Hello World"
+shrink="${shrink:0:5}"
+from=1
+shrink="${shrink:from:(from + 2)}"
+printf '%s\n' "shrunk: ${shrink}"
 if [[ "${name}" == *"World"* ]]; then
     printf '%s\n' "contains World"
 fi
