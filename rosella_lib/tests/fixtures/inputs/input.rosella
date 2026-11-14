@@ -1,0 +1,29 @@
+/* Script Arguments */
+print("count: ", arg_count());
+print("first: ", arg(1));
+print("second: ", arg(2));
+print("missing: [", arg(3), "]");
+let int i = 1;
+while i <= arg_count() {
+    print(i, ": ", arg(i));
+    i = i + 1;
+}
+
+/* Environment Variables */
+set_env("FIXTURE_MODE", "50% & (fast)!");
+print("mode: ", env("FIXTURE_MODE"));
+if env("FIXTURE_UNSET") == "" { print("unset is empty"); }
+
+/* Running Commands */
+write_file("50% & (more)!.txt", "same");
+write_file("same.txt", "same");
+write_file("other.txt", "different");
+let int same = run("git", "diff", "--no-index", "--quiet", "50% & (more)!.txt", "same.txt");
+let int different = run("git", "diff", "--no-index", "--quiet", "same.txt", "other.txt");
+print("same: ", same, " different: ", different);
+if run("git", "diff", "--no-index", "--quiet", arg(2), "same.txt") == 0 { print("argument reached git intact"); }
+run("git", "diff", "--no-index", "--quiet", "same.txt", "same.txt");
+if run("rosella_missing_command") != 0 { print("missing command failed"); }
+
+/* Numbers In Text */
+print("sum: ", same + different + 1);

@@ -1,0 +1,14 @@
+name: Hello & 50% (done)
+first line: a.b 1
+empty output
+inline: inline
+special: Done! 100% ^ caret
+plain caret: a ^ b
+percent name: %PATH% stays
+backslash: C:\dir\
+backslashes: C:\data\\
+run C:\data\\
+quotes: plain " & echo INJECTED & rem "
+first line with text: [second]
+from a function
+exit 0

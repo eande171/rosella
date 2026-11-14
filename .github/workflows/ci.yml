@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Unit and fixture tests
+        run: cargo test --workspace
+
+      - name: Run fixtures in Bash
+        shell: bash
+        run: bash rosella_lib/tests/run_fixtures.sh bash
+
+      - name: Run fixtures in cmd
+        if: runner.os == 'Windows'
+        shell: bash
+        run: bash rosella_lib/tests/run_fixtures.sh batch

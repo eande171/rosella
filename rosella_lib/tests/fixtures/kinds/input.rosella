@@ -1,0 +1,20 @@
+/* Kind Check */
+make_dir("full");
+write_file(path("full", "inside.txt"), "x");
+write_file("plain.txt", "x");
+
+remove("full");
+if is_file("full", "inside.txt") { print("remove left the folder alone"); }
+remove_dir("plain.txt");
+if is_file("plain.txt") { print("remove_dir left the file alone"); }
+copy("full", "full_copy");
+if not_exists("full_copy") { print("copy skipped the folder"); }
+
+move("full", "renamed");
+if is_file("renamed", "inside.txt") && not_exists("full") { print("move renamed the folder"); }
+move("plain.txt", "renamed");
+if is_file("renamed", "plain.txt") { print("move put the file in the folder"); }
+
+/* Default Exit Code */
+remove_dir("renamed");
+run("git", "config", "--file", "none.cfg", "--get", "x.y");

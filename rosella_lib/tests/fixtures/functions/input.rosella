@@ -1,0 +1,38 @@
+fn greet(str name, str greeting) { print(greeting, " ", name, "."); }
+greet("Bob Smith", "Hi!");
+let str n = "Ann & Lee (100%)";
+greet(n, "Hello");
+
+/* Parameters Stay Local */
+let int x = 5;
+fn bump(int x) {
+    x = x + 100;
+    print("inside: ", x);
+}
+bump(1);
+print("outside: ", x);
+
+/* Early Calls */
+later("called before its definition");
+if x == 99 {
+    fn only_if() { print("defined inside an if"); }
+}
+only_if();
+fn later(str message) { print(message); }
+
+/* Separate Parameters */
+fn a_b(int c) {
+    a(5);
+    print("a_b still has c = ", c);
+}
+fn a(int b_c) { print("a got ", b_c); }
+a_b(1);
+
+/* Global Lookup */
+fn show_x() { print("show_x sees ", x); }
+fn shadow(int x) { show_x(); }
+shadow(99);
+
+fn nothing() { return; }
+nothing();
+print("nothing returned");

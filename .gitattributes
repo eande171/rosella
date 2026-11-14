@@ -1,0 +1,5 @@
+# Line Endings
+*.sh text eol=lf
+*.out text eol=lf
+arguments text eol=lf
+*.bat text eol=crlf

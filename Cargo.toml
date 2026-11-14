@@ -2,5 +2,13 @@
 resolver = "3"
 members = [
     "rosella_cli",
-    "rosella_lib"
+    "rosella_lib",
+    "rosella_wasm"
 ]
+
+# Small Binaries
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rosella - Playground</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link rel="icon" type="image/svg+xml" href="../rosella.svg">
+
+    <link rel="stylesheet" href="../rosella.css">
+    <style>
+        /* Page Header */
+        .page-header { padding: 4rem 0 3rem; border-bottom: 1px solid rgba(34, 68, 136, 0.45); }
+        .page-header h1 { font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 700; line-height: 1.2; margin-bottom: 0.75rem; }
+        .page-header h1 span { color: var(--light-blue); }
+        .page-header p { font-size: 0.92rem; line-height: 1.8; color: rgba(240, 239, 244, 0.82); margin: 0; }
+
+        .panel-label { font-size: 0.76rem; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(240, 239, 244, 0.5); margin-bottom: 0.75rem; }
+
+        /* Editor */
+        .editor-bar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+        .rsl-select {
+            background: rgba(10, 15, 26, 0.9);
+            border: 1px solid rgba(34, 68, 136, 0.55);
+            color: var(--white);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            padding: 0.35rem 0.6rem;
+            border-radius: 0;
+        }
+        .editor {
+            width: 100%;
+            min-height: 30rem;
+            background: rgba(10, 15, 26, 0.9);
+            border: 1px solid rgba(34, 68, 136, 0.55);
+            color: var(--white);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            line-height: 1.8;
+            padding: 1.25rem 1.5rem;
+            resize: vertical;
+            outline: none;
+            tab-size: 4;
+            white-space: pre;
+            overflow: auto;
+        }
+        .editor:focus { border-color: var(--light-blue); }
+
+        /* Coloured Layer */
+        .editor-wrap { position: relative; }
+        .editor-wrap textarea { position: relative; z-index: 1; display: block; background: transparent; color: transparent; caret-color: var(--white); }
+        .editor-wrap textarea::selection { background: rgba(104, 195, 223, 0.3); }
+        .editor-wrap .editor-colours { position: absolute; inset: 0; min-height: 0; margin: 0; overflow: hidden; pointer-events: none; background: rgba(10, 15, 26, 0.9); border-color: transparent; color: var(--white); }
+
+        /* Output */
+        .output-bar { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+        .output-actions { display: flex; gap: 0.5rem; margin-bottom: 0.4rem; }
+        .small-btn {
+            background: transparent;
+            border: 1px solid rgba(34, 68, 136, 0.7);
+            color: rgba(240, 239, 244, 0.7);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.7rem;
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .small-btn:hover { color: var(--light-blue); border-color: var(--light-blue); }
+        .small-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .output { min-height: 30rem; max-height: 46rem; overflow: auto; }
+        .output.failed { color: #f0a090; border-color: rgba(220, 80, 60, 0.6); white-space: pre-wrap; }
+        .status { font-size: 0.78rem; color: rgba(240, 239, 244, 0.5); margin-top: 0.6rem; min-height: 1.2rem; }
+        .status.ok { color: #7ec8a0; }
+        .status.failed { color: #f0a090; }
+    </style>
+
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+</head>
+<body>
+<script>
+    AOS.init();
+</script>
+
+<nav>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center">
+            <a href="../index.html" class="nav-logo"><img src="../rosella.svg" alt="">ROSELLA</a>
+            <div class="d-flex gap-4">
+                <a href="../index.html" class="nav-link-item">home</a>
+                <a href="../docs/index.html" class="nav-link-item">docs</a>
+                <a href="https://github.com/eande171/rosella" class="nav-link-item">github</a>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<main>
+
+    <!-- Page Header -->
+    <section class="page-header">
+        <div class="container" data-aos="fade-down">
+            <p class="section-label">Playground</p>
+            <h1>Try Rosella in your <span>browser</span>.</h1>
+            <p>Type a script and see the Batch and Bash it compiles to as you go. The real compiler runs on your own computer, built to WebAssembly, so nothing you type is sent anywhere.</p>
+        </div>
+    </section>
+
+    <!-- Playground -->
+    <section class="section-divider" style="border-top: none;">
+        <div class="container">
+            <div class="row g-4">
+                <div class="col-12 col-lg-6">
+                    <div class="editor-bar">
+                        <p class="panel-label mb-0">Rosella</p>
+                        <select class="rsl-select" id="examples" aria-label="Load an example"></select>
+                    </div>
+                    <div class="editor-wrap">
+                        <pre class="editor editor-colours" id="colours" aria-hidden="true"></pre>
+                        <textarea class="editor" id="editor" spellcheck="false" aria-label="Rosella source"></textarea>
+                    </div>
+                </div>
+                <div class="col-12 col-lg-6">
+                    <div class="output-bar">
+                        <div class="code-tabs">
+                            <button class="code-tab active" data-shell="batch">Batch</button>
+                            <button class="code-tab" data-shell="bash">Bash</button>
+                        </div>
+                        <div class="output-actions">
+                            <button class="small-btn" id="copy">Copy</button>
+                            <button class="small-btn" id="download">Download</button>
+                        </div>
+                    </div>
+                    <pre class="code-block output" id="output">Loading the compiler...</pre>
+                    <div class="status" id="status"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<footer>
+    <div class="container">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <span>Rosella - built by <a href="https://github.com/eande171">Eden Anderson</a>. Licensed under Apache 2.0.</span>
+            <span>
+                <a href="https://github.com/eande171/rosella">GitHub</a>
+                &nbsp;·&nbsp;
+                <a href="../docs/index.html">Docs</a>
+                &nbsp;·&nbsp;
+                <a href="https://ko-fi.com/eande171">Support Me</a>
+            </span>
+        </div>
+    </div>
+</footer>
+
+<!-- Examples -->
+<script type="text/plain" class="example" data-name="Hello World">print("Hello World!");
+</script>
+<script type="text/plain" class="example" data-name="Functions">fn int square(int n) {
+    return n * n;
+}
+
+fn str label(int n) {
+    if n % 2 == 0 {
+        return "even";
+    }
+    return "odd";
+}
+
+for int i in range(1, 5) {
+    print(i, " squared is ", square(i), " which is ", label(square(i)));
+}
+</script>
+<script type="text/plain" class="example" data-name="Loops">let int count = 10;
+while count > 0 {
+    count = count - 3;
+    if count == 4 {
+        continue;
+    }
+    print("count is ", count);
+}
+
+for int i in range(10, 0, -2) {
+    if i < 4 {
+        break;
+    }
+    print("down by two: ", i);
+}
+</script>
+<script type="text/plain" class="example" data-name="Files and folders">make_dir("notes");
+write_file(path("notes", "a.txt"), "first");
+write_file(path("notes", "b.txt"), "second");
+append_file(path("notes", "b.txt"), "more");
+
+let int found = 0;
+for str file in files("notes", "*.txt") {
+    found = found + 1;
+}
+print("Found ", found, " notes");
+
+copy(path("notes", "a.txt"), path("notes", "c.txt"));
+remove(path("notes", "a.txt"));
+if not_exists("notes", "a.txt") && is_file("notes", "c.txt") {
+    print("Copied and removed");
+}
+remove_dir("notes");
+</script>
+<script type="text/plain" class="example" data-name="Text">let str title = "Hello World!";
+print(upper(title), " / ", lower(title));
+print("Length: ", length(title));
+print("First word: ", slice(title, 0, 5));
+print(replace(title, "World", "Rosella"));
+
+if contains(title, "World") {
+    print("Special characters stay intact: 100% & (more)!");
+}
+</script>
+<script type="text/plain" class="example" data-name="Input and numbers">let str answer = read("Pick a number: ");
+while !is_number(answer) {
+    answer = read("That was not a number. Try again: ");
+}
+
+let int picked = number(answer);
+let int roll = random(1, 6);
+print("You picked ", picked, " and the dice rolled a number from 1 to 6");
+
+if arg_count() > 0 {
+    print("The first argument was ", arg(1));
+}
+</script>
+<script type="text/plain" class="example" data-name="Programs and platforms">let str folder = env("HOME");
+with windows {
+    folder = env("USERPROFILE");
+}
+
+if length(folder) > 0 {
+    print("Found a home folder");
+}
+
+let int code = run("git", "--version");
+print("git exited with ", code);
+let str version = run_output("git", "--version");
+if contains(version, "git version") {
+    print("run_output read the version");
+}
+</script>
+<script type="text/plain" class="example" data-name="A mistake">let int count = "ten";
+print(count);
+</script>
+
+<script type="module">
+    import { loadCompiler } from "../compiler.js";
+    import { highlight } from "../highlight.js";
+
+    const editor = document.getElementById("editor");
+    const colours = document.getElementById("colours");
+    const output = document.getElementById("output");
+    const status = document.getElementById("status");
+    const picker = document.getElementById("examples");
+    const tabs = document.querySelectorAll(".code-tab");
+    const examples = [...document.querySelectorAll(".example")];
+    const saved = "rosella-playground";
+
+    let compiler = null;
+    let shell = "batch";
+    let result = null;
+    let timer = null;
+
+    // Example Picker
+    picker.add(new Option("Load an example...", ""));
+    examples.forEach((example, index) => picker.add(new Option(example.dataset.name, index)));
+    picker.addEventListener("change", () => {
+        if (picker.value === "") return;
+        editor.value = examples[picker.value].textContent;
+        picker.value = "";
+        update();
+    });
+
+    try {
+        editor.value = localStorage.getItem(saved) ?? examples[1].textContent;
+    } catch {
+        editor.value = examples[1].textContent;
+    }
+
+    // Coloured Layer
+    function align() {
+        colours.scrollTop = editor.scrollTop;
+        colours.scrollLeft = editor.scrollLeft;
+    }
+
+    function paint() {
+        highlight(colours, editor.value + "\n\n\n", "rosella");
+        align();
+    }
+
+    function update() {
+        paint();
+        try { localStorage.setItem(saved, editor.value); } catch { }
+        if (!compiler) return;
+
+        result = compiler.compile(editor.value, shell);
+        if (result.ok) highlight(output, result.text, shell);
+        else output.textContent = result.text;
+        output.classList.toggle("failed", !result.ok);
+        status.className = "status " + (result.ok ? "ok" : "failed");
+        const lines = result.text.split("\n").length - 1;
+        status.textContent = result.ok ? `Compiled to ${lines} lines of ${shell === "batch" ? "Batch" : "Bash"}` : "Fix the error above to see the output";
+        document.getElementById("copy").disabled = !result.ok;
+        document.getElementById("download").disabled = !result.ok;
+    }
+
+    tabs.forEach((tab) => tab.addEventListener("click", () => {
+        shell = tab.dataset.shell;
+        tabs.forEach((other) => other.classList.toggle("active", other === tab));
+        update();
+    }));
+
+    editor.addEventListener("scroll", align);
+    editor.addEventListener("input", () => {
+        paint();
+        clearTimeout(timer);
+        timer = setTimeout(update, 150);
+    });
+
+    // Tab Inserts Spaces
+    editor.addEventListener("keydown", (event) => {
+        if (event.key !== "Tab" || event.shiftKey) return;
+        event.preventDefault();
+        editor.setRangeText("    ", editor.selectionStart, editor.selectionEnd, "end");
+        update();
+    });
+
+    document.getElementById("copy").addEventListener("click", async (event) => {
+        await navigator.clipboard.writeText(result.text);
+        event.target.textContent = "Copied";
+        setTimeout(() => { event.target.textContent = "Copy"; }, 1500);
+    });
+
+    // Windows Line Endings For Batch
+    document.getElementById("download").addEventListener("click", () => {
+        const text = shell === "batch" ? result.text.replace(/\n/g, "\r\n") : result.text;
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+        link.download = shell === "batch" ? "script.bat" : "script.sh";
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    });
+
+    loadCompiler("../rosella.wasm")
+        .then((loaded) => { compiler = loaded; update(); })
+        .catch(() => {
+            output.textContent = "The compiler could not be loaded in this browser.";
+            status.textContent = "";
+        });
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

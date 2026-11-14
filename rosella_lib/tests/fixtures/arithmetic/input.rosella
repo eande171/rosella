@@ -1,0 +1,7 @@
+let int x = (1 + 2) * 3;
+let int y = x - -4;
+print(x, " ", y);
+
+fn show(int n) { print("n=", n); }
+show(x * 3);
+show((x + 1) * -2);

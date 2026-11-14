@@ -1,0 +1,9 @@
+/* Special Characters */
+print("50% off & more <today> (only) | $HOME `echo pwned` ^caret \"q\" C:\Users");
+let str s = "a!b%c^d&e";
+print(s, " / ", "x^y");
+let str a = "A";
+let str c = concat(a, ", B!");
+print(c);
+print("multi\nline");
+print("");

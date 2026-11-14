@@ -1,0 +1,4 @@
+a wildcard in a variable matches nothing
+files() with a wildcard in a variable found 0
+keep.txt survived
+exit 0

@@ -1,8 +1,9 @@
-mod lexer;
-mod parser;
+mod builtins;
+mod check;
+mod codegen;
 mod error;
-mod compiler;
+mod syntax;
 
-pub use lexer::Lexer;
-pub use parser::{Parser, OS};
-pub use compiler::{Compiler, Shell};
+pub use codegen::{Compiler, Shell};
+pub use error::{RosellaError, Span};
+pub use syntax::{Lexer, OS, Parser};

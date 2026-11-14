@@ -1,26 +1,99 @@
-use std::fmt::{self};
+use crate::syntax::Token;
 use std::error::Error;
-use super::lexer::Token;
+use std::fmt::{self};
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Span {
+    pub line: usize,
+    pub column: usize,
+}
+
+impl fmt::Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "line {}, column {}", self.line, self.column)
+    }
+}
 
 #[derive(Debug)]
 pub enum RosellaError {
-    InvalidPunctuation(Option<char>),
-    InvalidToken(Option<char>),
-    InvalidStatement(Token),
-    UnexpectedToken(Token, Token),
-    ParseError(String),
-    CompilerError(String),
+    InvalidPunctuation(char, Span),
+    InvalidToken(char, Span),
+    InvalidNumber(String, Span),
+    UnterminatedString(Span),
+    UnterminatedComment(Span),
+    LineComment(Span),
+    UnterminatedRaw(Span),
+    UnexpectedToken(Token, Token, Span),
+    ParseError(String, Span),
+    CompilerError(String, Option<Span>),
 }
 
 impl fmt::Display for RosellaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RosellaError::InvalidPunctuation(punctuation) => write!(f, "Unhandled Punctuation: {:?}", punctuation),
-            RosellaError::InvalidToken(token) => write!(f, "Input does not match a valid token: {:?}", token),
-            RosellaError::InvalidStatement(statement) => write!(f, "Unhandled Statement: {:?}", statement),
-            RosellaError::UnexpectedToken(expected_token, found_token) => write!(f, "Expected: {:?}, found: {:?}", expected_token, found_token),
-            RosellaError::ParseError(msg) => write!(f, "Error Occurred during Parsing: {}", msg),
-            RosellaError::CompilerError(msg) => write!(f, "Error Occurred during Compilation: {}", msg),
+            RosellaError::InvalidPunctuation(punctuation, span) => {
+                let hint = match punctuation {
+                    '.' => "; numbers are whole, like 5",
+                    '|' => "; write || for or",
+                    '&' => "; write && for and",
+                    _ => "",
+                };
+                write!(
+                    f,
+                    "{}: {:?} is not used in Rosella{}",
+                    span, punctuation, hint
+                )
+            }
+            RosellaError::InvalidToken(character, span) => write!(
+                f,
+                "{}: Input does not match a valid token: {:?}",
+                span, character
+            ),
+            RosellaError::InvalidNumber(text, span) => {
+                write!(
+                    f,
+                    "{}: {} is not a whole number that fits in an int",
+                    span, text
+                )
+            }
+            RosellaError::UnterminatedString(span) => {
+                write!(f, "{}: Expected '\"' to end string", span)
+            }
+            RosellaError::UnterminatedComment(span) => {
+                write!(f, "{}: Expected '*/' to end comment", span)
+            }
+            RosellaError::LineComment(span) => {
+                write!(f, "{}: Comments are written /* like this */", span)
+            }
+            RosellaError::UnterminatedRaw(span) => write!(
+                f,
+                "{}: Expected ';' at the end of the raw instruction line",
+                span
+            ),
+            RosellaError::UnexpectedToken(expected_token, found_token, span) => write!(
+                f,
+                "{}: Expected: {:?}, found: {:?}",
+                span, expected_token, found_token
+            ),
+            RosellaError::ParseError(msg, span) => write!(f, "{}: {}", span, msg),
+            RosellaError::CompilerError(msg, Some(span)) => write!(f, "{}: {}", span, msg),
+            RosellaError::CompilerError(msg, None) => write!(f, "{}", msg),
+        }
+    }
+}
+
+impl RosellaError {
+    pub(crate) fn compiler(message: impl Into<String>) -> Self {
+        RosellaError::CompilerError(message.into(), None)
+    }
+
+    // Innermost Statement Wins
+    pub(crate) fn located(self, span: Span) -> Self {
+        match self {
+            RosellaError::CompilerError(message, None) => {
+                RosellaError::CompilerError(message, Some(span))
+            }
+            other => other,
         }
     }
 }

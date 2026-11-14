@@ -1,0 +1,6 @@
+let int x = 2;
+if x > 1 { } else { print("no"); }
+fn nothing() { }
+nothing();
+if x > 1 { with windows { } with linux { } }
+print("ok");
