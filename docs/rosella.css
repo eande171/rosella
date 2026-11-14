@@ -1,0 +1,129 @@
+:root {
+    --light-blue: #68c3df;
+    --pale-blue: #9ad8ec;
+    --blue: #224488;
+    --navy: #121a2b;
+    --white: #f0eff4;
+    --bs-heading-color: #f0eff4;
+    --bs-body-color: #f0eff4;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+    color: var(--white);
+    font-family: 'Outfit', sans-serif;
+    font-size: 17px;
+    background-color: var(--navy);
+}
+
+body {
+    background-color: var(--navy);
+    background-image:
+        linear-gradient(rgba(34, 68, 136, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34, 68, 136, 0.06) 1px, transparent 1px);
+    background-size: 32px 32px;
+    overflow-x: hidden;
+}
+
+a {
+    color: var(--light-blue);
+    text-decoration: none;
+    display: inline-block;
+    transition: transform 0.3s ease-in-out, color 0.3s ease-in-out;
+    transform-origin: center center;
+}
+a:hover { transform: scale(1.05); color: var(--pale-blue); }
+
+code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82em;
+    color: var(--pale-blue);
+    background: rgba(34, 68, 136, 0.25);
+    padding: 0.1em 0.35em;
+}
+
+nav { padding: 1.5rem 0; border-bottom: 1px solid rgba(34, 68, 136, 0.45); }
+.nav-logo { font-size: 1.1rem; font-weight: 700; color: var(--white) !important; letter-spacing: 0.1em; }
+.nav-logo img { height: 1.6rem; margin-right: 0.5rem; vertical-align: -0.35rem; }
+.nav-logo:hover { color: var(--white) !important; }
+.nav-link-item { font-size: 0.92rem; color: rgba(240, 239, 244, 0.7) !important; }
+.nav-link-item:hover { color: var(--pale-blue) !important; }
+
+.section-divider { border-top: 1px solid rgba(34, 68, 136, 0.45); padding: 4rem 0; }
+.section-label { font-size: 0.76rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--light-blue); margin-bottom: 1rem; opacity: 0.9; }
+
+/* Buttons */
+.rsl-btn {
+    display: inline-block;
+    padding: 0.75rem 1.75rem;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.92rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    border: none;
+    border-radius: 0;
+    transition: transform 0.3s ease, color 0.3s ease, background 0.3s ease, border-color 0.3s ease;
+}
+.rsl-btn:hover { transform: scale(1.05); }
+.rsl-btn-primary { background: var(--light-blue); color: var(--navy) !important; }
+.rsl-btn-primary:hover { background: var(--pale-blue); }
+.rsl-btn-secondary { background: transparent; color: var(--white) !important; border: 1px solid rgba(240, 239, 244, 0.25); }
+.rsl-btn-secondary:hover { border-color: rgba(240, 239, 244, 0.6); }
+
+/* Code Blocks */
+.code-block {
+    background: rgba(10, 15, 26, 0.9);
+    border: 1px solid rgba(34, 68, 136, 0.55);
+    padding: 1.25rem 1.5rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.8;
+    overflow-x: auto;
+    white-space: pre;
+    margin: 0;
+    color: rgba(240, 239, 244, 0.9);
+}
+
+/* Syntax Colours */
+.hljs-keyword, .hljs-literal { color: var(--light-blue); }
+.hljs-type { color: var(--pale-blue); font-style: italic; }
+.hljs-built_in { color: #7ec8a0; }
+.hljs-title { color: #a8e6c1; }
+.hljs-string { color: #e8c07d; }
+.hljs-number { color: #c792ea; }
+.hljs-variable, .hljs-template-variable, .hljs-subst { color: #f0a6ca; }
+.hljs-comment { color: rgba(154, 216, 236, 0.45); font-style: italic; }
+.hljs-meta { color: #f78c6c; }
+
+/* Tabs */
+.code-tabs { display: flex; flex-wrap: wrap; }
+.code-tab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    padding: 0.4rem 0.9rem;
+    background: rgba(10, 15, 26, 0.5);
+    border: 1px solid rgba(34, 68, 136, 0.55);
+    border-bottom: none;
+    color: rgba(240, 239, 244, 0.5);
+    cursor: pointer;
+    transition: color 0.2s, background 0.2s;
+}
+.code-tab.active { background: rgba(10, 15, 26, 0.9); color: var(--light-blue); }
+.code-tab:hover:not(.active) { color: var(--white); }
+.code-panel { display: none; }
+.code-panel.active { display: block; }
+
+.callout {
+    padding: 0.9rem 1.1rem;
+    border-left: 3px solid;
+    font-size: 0.88rem;
+    line-height: 1.7;
+    margin-bottom: 1.25rem;
+    color: rgba(240, 239, 244, 0.85);
+}
+.callout-info { background: rgba(34, 68, 136, 0.25); border-color: var(--light-blue); }
+.callout-warn { background: rgba(232, 168, 56, 0.08); border-color: #e8a838; }
+
+footer { padding: 2.5rem 0; border-top: 1px solid rgba(34, 68, 136, 0.45); font-size: 0.82rem; color: rgba(240, 239, 244, 0.45); }

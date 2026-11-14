@@ -258,6 +258,9 @@ impl Lexer {
                     self.consume_comment()?;
                     continue;
                 }
+                Some('/') if self.peek() == Some('/') => {
+                    return Err(RosellaError::LineComment(span));
+                }
 
                 Some(ch) if ch.is_ascii_digit() => Token::Number(self.read_number()?),
                 Some(ch) if ch.is_ascii_alphabetic() || ch == '_' => {
@@ -421,6 +424,13 @@ z"
             Lexer::new("/*/").tokenise(),
             Err(RosellaError::UnterminatedComment(_))
         ));
+        let message = Lexer::new("a // b").tokenise().unwrap_err().to_string();
+        assert_eq!(
+            message,
+            "line 1, column 3: Comments are written /* like this */"
+        );
+        let message = Lexer::new(".5").tokenise().unwrap_err().to_string();
+        assert!(message.ends_with("'.' is not used in Rosella; numbers are whole, like 5"));
     }
 
     #[test]

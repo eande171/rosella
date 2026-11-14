@@ -6,7 +6,8 @@ use std::process::ExitCode;
 
 #[derive(ClapParser, Debug)]
 #[command(
-    version = "0.1.0",
+    name = "rosella",
+    version,
     about = "A Command Line Interface for the Rosella programming language."
 )]
 struct Cli {
@@ -16,17 +17,28 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    #[command(about = "Compile a Rosella script to Batch or Bash")]
     Compile {
-        #[arg(short, long, value_name = "FILE", value_parser = clap::value_parser!(PathBuf))]
+        #[arg(short, long, value_name = "FILE", value_parser = clap::value_parser!(PathBuf), help = "The Rosella script to compile")]
         input: PathBuf,
 
-        #[arg(short, long, value_name = "FILE", value_parser = clap::value_parser!(PathBuf))]
+        #[arg(short, long, value_name = "FILE", value_parser = clap::value_parser!(PathBuf), help = "Where to write the script [default: the input name ending in .bat or .sh]")]
         output: Option<PathBuf>,
 
-        #[arg(short, long, value_enum)]
+        #[arg(
+            short,
+            long,
+            value_enum,
+            help = "The operating system to target [default: this one]"
+        )]
         target: Option<TargetOS>,
 
-        #[arg(short, long, value_enum)]
+        #[arg(
+            short,
+            long,
+            value_enum,
+            help = "The shell to write for [default: batch on Windows, bash elsewhere]"
+        )]
         shell: Option<TargetShell>,
     },
 }

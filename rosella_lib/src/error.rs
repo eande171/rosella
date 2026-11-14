@@ -21,6 +21,7 @@ pub enum RosellaError {
     InvalidNumber(String, Span),
     UnterminatedString(Span),
     UnterminatedComment(Span),
+    LineComment(Span),
     UnterminatedRaw(Span),
     UnexpectedToken(Token, Token, Span),
     ParseError(String, Span),
@@ -31,7 +32,17 @@ impl fmt::Display for RosellaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RosellaError::InvalidPunctuation(punctuation, span) => {
-                write!(f, "{}: Unhandled Punctuation: {:?}", span, punctuation)
+                let hint = match punctuation {
+                    '.' => "; numbers are whole, like 5",
+                    '|' => "; write || for or",
+                    '&' => "; write && for and",
+                    _ => "",
+                };
+                write!(
+                    f,
+                    "{}: {:?} is not used in Rosella{}",
+                    span, punctuation, hint
+                )
             }
             RosellaError::InvalidToken(character, span) => write!(
                 f,
@@ -50,6 +61,9 @@ impl fmt::Display for RosellaError {
             }
             RosellaError::UnterminatedComment(span) => {
                 write!(f, "{}: Expected '*/' to end comment", span)
+            }
+            RosellaError::LineComment(span) => {
+                write!(f, "{}: Comments are written /* like this */", span)
             }
             RosellaError::UnterminatedRaw(span) => write!(
                 f,

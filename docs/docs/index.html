@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rosella - Documentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link rel="icon" type="image/svg+xml" href="../rosella.svg">
+
+    <link rel="stylesheet" href="../rosella.css">
+    <style>
+        html { scroll-behavior: smooth; }
+        a:hover { transform: scale(1.04); }
+
+        /* Sidebar */
+        .sidebar {
+            padding: 2.5rem 0;
+            position: sticky;
+            top: 1rem;
+            height: calc(100vh - 2rem);
+            overflow-y: auto;
+            border-right: 1px solid rgba(34, 68, 136, 0.45);
+            scrollbar-width: none;
+        }
+        .sidebar::-webkit-scrollbar { display: none; }
+        .sidebar-group { margin-bottom: 2rem; }
+        .sidebar-group-label { font-size: 0.68rem; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(240, 239, 244, 0.4); margin-bottom: 0.6rem; }
+        .sidebar-link {
+            display: block;
+            font-size: 0.88rem;
+            color: rgba(240, 239, 244, 0.65) !important;
+            padding: 0.3rem 1rem 0.3rem 0.75rem;
+            border-left: 2px solid transparent;
+            transform: none !important;
+        }
+        .sidebar-link:hover { color: var(--white) !important; }
+        .sidebar-link.active { color: var(--light-blue) !important; border-left-color: var(--light-blue); }
+
+        /* Content */
+        .docs-content { padding: 2.5rem 0 4rem; max-width: 820px; }
+        .docs-section { margin-bottom: 4rem; scroll-margin-top: 2rem; }
+        .docs-section h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(34, 68, 136, 0.45); }
+        .docs-section h3 { font-size: 1.1rem; font-weight: 600; margin-top: 2rem; margin-bottom: 0.75rem; }
+        .docs-section p, .docs-section li { font-size: 0.92rem; line-height: 1.8; color: rgba(240, 239, 244, 0.85); }
+        .docs-section ul { padding-left: 1.5rem; margin-bottom: 1rem; }
+        .docs-section .code-block { margin-bottom: 1.25rem; }
+
+        /* Examples */
+        .example { margin-bottom: 1.5rem; }
+        .example .code-block { margin-bottom: 0; }
+        .example .output-text { color: #a8d8b9; }
+
+        /* Tables */
+        .ref-table { width: 100%; font-size: 0.84rem; border-collapse: collapse; margin-bottom: 1.25rem; min-width: 560px; }
+        .ref-table th { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(240, 239, 244, 0.45); font-weight: 600; padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(34, 68, 136, 0.55); text-align: left; }
+        .ref-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid rgba(34, 68, 136, 0.25); color: rgba(240, 239, 244, 0.85); vertical-align: top; }
+        .ref-table tr:last-child td { border-bottom: none; }
+        .ref-table td:first-child { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--pale-blue); white-space: nowrap; }
+    </style>
+
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+</head>
+<body>
+<script>
+    AOS.init({ once: true });
+</script>
+
+<nav>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center">
+            <a href="../index.html" class="nav-logo"><img src="../rosella.svg" alt="">ROSELLA</a>
+            <div class="d-flex gap-4">
+                <a href="../index.html" class="nav-link-item">home</a>
+                <a href="../demo/index.html" class="nav-link-item">try it</a>
+                <a href="https://github.com/eande171/rosella" class="nav-link-item">github</a>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<div class="container mt-3 px-4 px-md-2">
+    <div class="row gx-lg-5">
+
+        <!-- Sidebar -->
+        <aside class="col-md-4 col-lg-3 d-none d-md-block sidebar">
+            <div class="sidebar-group">
+                <div class="sidebar-group-label">Overview</div>
+                <a href="#getting-started" class="sidebar-link active">Getting started</a>
+                <a href="#command-line" class="sidebar-link">Command line</a>
+            </div>
+            <div class="sidebar-group">
+                <div class="sidebar-group-label">Language</div>
+                <a href="#basics" class="sidebar-link">Basics</a>
+                <a href="#numbers" class="sidebar-link">Numbers</a>
+                <a href="#conditions" class="sidebar-link">Conditions</a>
+                <a href="#loops" class="sidebar-link">Loops</a>
+                <a href="#functions" class="sidebar-link">Functions</a>
+                <a href="#text" class="sidebar-link">Text</a>
+                <a href="#files" class="sidebar-link">Files and folders</a>
+                <a href="#input" class="sidebar-link">Input and environment</a>
+                <a href="#programs" class="sidebar-link">Running programs</a>
+                <a href="#platforms" class="sidebar-link">Platforms and raw lines</a>
+            </div>
+            <div class="sidebar-group">
+                <div class="sidebar-group-label">Reference</div>
+                <a href="#builtins" class="sidebar-link">Built-in functions</a>
+                <a href="#names" class="sidebar-link">Names you cannot use</a>
+                <a href="#differences" class="sidebar-link">Batch and Bash differences</a>
+            </div>
+        </aside>
+
+        <main class="col-12 col-md-7 offset-md-1 col-lg-8 docs-content">
+
+            <!-- Getting Started -->
+            <section class="docs-section" id="getting-started">
+                <p class="section-label">Overview</p>
+                <h2>Getting started</h2>
+                <p>Rosella is a small scripting language that compiles to Batch for Windows and Bash for Linux. You write one <code>.rosella</code> file, and the compiler writes a <code>.bat</code> or <code>.sh</code> script that you run like any other.</p>
+
+                <h3>Install</h3>
+                <p>Download <code>rosella-windows.zip</code> or <code>rosella-linux.zip</code> from the <a href="https://github.com/eande171/rosella/releases/latest">latest release</a>. Each holds one program, <code>rosella</code>. Unzip it somewhere on your <code>PATH</code>. You can also build it from source with <code>cargo build --release</code>.</p>
+
+                <h3>Your first script</h3>
+                <p>Save this as <code>hello.rosella</code>:</p>
+                <div class="example">
+                    <pre class="code-block rosella-source">print("Hello World!");</pre>
+                    <pre class="code-block output-text">Hello World!</pre>
+                </div>
+                <p>Then compile it:</p>
+                <pre class="code-block">rosella compile -i hello.rosella</pre>
+                <p>On Windows this writes <code>hello.bat</code>. On Linux it writes <code>hello.sh</code>. Run it the usual way, with <code>hello.bat</code> or <code>bash hello.sh</code>.</p>
+                <div class="callout callout-info">Every example on this page has tabs for the Batch and Bash it compiles to. They are compiled live in your browser by the real compiler, so they always match the current version. You can also try your own scripts in the <a href="../demo/index.html">playground</a>.</div>
+            </section>
+
+            <!-- Command Line -->
+            <section class="docs-section" id="command-line">
+                <p class="section-label">Overview</p>
+                <h2>Command line</h2>
+                <p>The compiler has one command, <code>compile</code>:</p>
+                <pre class="code-block">rosella compile -i &lt;FILE&gt; [-o &lt;FILE&gt;] [-t windows|linux] [-s batch|bash]</pre>
+                <div class="table-responsive">
+                    <table class="ref-table">
+                        <thead><tr><th>Option</th><th>Meaning</th></tr></thead>
+                        <tbody>
+                            <tr><td>-i, --input</td><td>The Rosella script to compile. Required.</td></tr>
+                            <tr><td>-o, --output</td><td>Where to write the result. By default the input name ending in <code>.bat</code> or <code>.sh</code>.</td></tr>
+                            <tr><td>-t, --target</td><td>The operating system the script is for, <code>windows</code> or <code>linux</code>. This decides which <code>with</code> blocks are kept and which way paths are written. By default, the system you are on.</td></tr>
+                            <tr><td>-s, --shell</td><td>The shell to write, <code>batch</code> or <code>bash</code>. By default Batch on Windows and Bash anywhere else.</td></tr>
+                            <tr><td>-h, --help</td><td>Show help.</td></tr>
+                            <tr><td>-V, --version</td><td>Show the version.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>To write both scripts from one machine:</p>
+                <pre class="code-block">rosella compile -i hello.rosella -t windows -s batch
+rosella compile -i hello.rosella -t linux -s bash</pre>
+                <p>Batch is only available for the <code>windows</code> target. If there is a mistake in the script, the compiler prints it with a line and column, writes nothing, and exits with code 1:</p>
+                <pre class="code-block">Error during compilation: line 2, column 1: 'count' is int and cannot take a str value</pre>
+            </section>
+
+            <!-- Basics -->
+            <section class="docs-section" id="basics">
+                <p class="section-label">Language</p>
+                <h2>Basics</h2>
+                <p>Every statement ends with a semicolon. Blocks such as <code>if</code>, loops and functions use braces and do not need one after the closing brace. Comments are written <code>/* like this */</code> and can span several lines.</p>
+                <p>There are two types. <code>int</code> holds a whole number and <code>str</code> holds text. A variable is declared once with <code>let</code> and its type, and changed with <code>=</code>:</p>
+                <div class="example">
+                    <pre class="code-block rosella-source">/* Variables */
+let str name = "Ada";
+let int age = 36;
+age = age + 1;
+
+print("Hello ", name, ", next year you are ", age);
+print("Escapes: \"quotes\", a\ttab and a backslash \\");
+print();
+print("Two\nlines");</pre>
+                    <pre class="code-block output-text">Hello Ada, next year you are 37
+Escapes: "quotes", a	tab and a backslash \
+
+Two
+lines</pre>
+                </div>
+                <ul>
+                    <li><code>print()</code> takes any number of values, joins them and ends the line. With nothing inside it prints an empty line.</li>
+                    <li>Text understands four escapes: <code>\"</code>, <code>\\</code>, <code>\n</code> for a new line and <code>\t</code> for a tab.</li>
+                    <li>An <code>int</code> can be used where text is expected, but text cannot be stored in an <code>int</code>. Use <code>number()</code> for that.</li>
+                    <li>Every <code>let</code> declares its variable for the whole script, including ones inside functions, so each name is declared only once.</li>
+                </ul>
+                <div class="callout callout-warn">Batch cannot hold <code>"</code> or a line break inside a variable, path or argument. Rosella reports this as an error when compiling for Batch. <code>print()</code> and the text written by <code>write_file()</code> accept both.</div>
+            </section>
+
+            <!-- Numbers -->
+            <section class="docs-section" id="numbers">
+                <p class="section-label">Language</p>
+                <h2>Numbers</h2>
+                <p>Numbers are whole numbers that fit in 32 bits, from -2147483648 to 2147483647. Arithmetic uses <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code> and <code>%</code>. Division rounds towards zero.</p>
+                <div class="example">
+                    <pre class="code-block rosella-source">let int a = 17;
+let int b = 5;
+print(a + b, " ", a - b, " ", a * b, " ", a / b, " ", a % b);
+print(2 + 3 * 4, " ", (2 + 3) * 4, " ", 0 - a, " ", -3 * 2);
+
+let str typed = " 42 ";
+if is_number(typed) {
+    print("As a number: ", number(typed) + 1);
+}
+print(number("abc"), " ", number("007"));</pre>
+                    <pre class="code-block output-text">22 12 85 3 2
+14 20 -17 -6
+As a number: 43
+0 7</pre>
+                </div>
+                <ul>
+                    <li>A minus sign works directly in front of a number, like <code>-3</code>. To negate a variable, write <code>0 - a</code>.</li>
+                    <li><code>number(text)</code> turns text into a number. It accepts an optional minus sign and digits, ignores spaces around them, and reads leading zeros as normal decimal. Anything else gives 0.</li>
+                    <li><code>is_number(text)</code> checks the same rule, so a script can tell a typed 0 from bad input.</li>
+                </ul>
+                <h3>Operator order</h3>
+                <p>From the first to be worked out to the last:</p>
+                <div class="table-responsive">
+                    <table class="ref-table">
+                        <thead><tr><th>Operators</th><th>Meaning</th></tr></thead>
+                        <tbody>
+                            <tr><td>( )  !</td><td>Brackets, and not. <code>!</code> applies to the one item after it, so write <code>!(a == b)</code>.</td></tr>
+                            <tr><td>*  /  %</td><td>Multiply, divide, remainder</td></tr>
+                            <tr><td>+  -</td><td>Add, subtract</td></tr>
+                            <tr><td>&lt;  &gt;  &lt;=  &gt;=</td><td>Compare</td></tr>
+                            <tr><td>==  !=</td><td>Equal, not equal</td></tr>
+                            <tr><td>&amp;&amp;</td><td>And</td></tr>
+                            <tr><td>||</td><td>Or</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Conditions -->
+            <section class="docs-section" id="conditions">
+                <p class="section-label">Language</p>
+                <h2>Conditions</h2>
+                <p><code>if</code>, <code>else if</code> and <code>else</code> work as in C, without brackets around the condition. Comparisons, <code>&amp;&amp;</code>, <code>||</code> and <code>!</code> can only be used in <code>if</code> and <code>while</code> conditions.</p>
+                <div class="example">
+                    <pre class="code-block rosella-source">let int score = 72;
+let str grade = "";
+
+if score &gt;= 90 {
+    grade = "A";
+} else if score &gt;= 70 {
+    grade = "B";
+} else {
+    grade = "C";
+}
+print("Grade: ", grade);
+
+if grade == "B" &amp;&amp; !(score == 75) || score &gt; 100 {
+    print("A B, but not exactly 75");
+}
+
+if contains("Hello World", "World") &amp;&amp; not_exists("missing.txt") {
+    print("Text and file checks work in conditions too");
+}</pre>
+                    <pre class="code-block output-text">Grade: B
+A B, but not exactly 75
+Text and file checks work in conditions too</pre>
+                </div>
+                <ul>
+                    <li>Both sides of a comparison must have the same type.</li>
+                    <li>Text can be compared with <code>==</code>, <code>!=</code>, <code>&lt;</code> and <code>&gt;</code>.</li>
+                    <li>The right side of <code>&amp;&amp;</code> and <code>||</code> only runs when it is needed.</li>
+                    <li>The checks <code>exists</code>, <code>not_exists</code>, <code>is_file</code>, <code>is_dir</code>, <code>contains</code> and <code>is_number</code> can only be used in conditions.</li>
+                </ul>
+            </section>
+
+            <!-- Loops -->
+            <section class="docs-section" id="loops">
+                <p class="section-label">Language</p>
+                <h2>Loops</h2>
+                <p><code>while</code> repeats while its condition is true. <code>for</code> counts through a range of numbers or walks through files. <code>break</code> leaves the loop and <code>continue</code> skips to the next round.</p>
+                <div class="example">
+                    <pre class="code-block rosella-source">let int tries = 0;
+while tries &lt; 3 {
+    tries = tries + 1;
+    print("Try ", tries);
+}
+
+for int i in range(0, 10, 3) {
+    print("i = ", i);
+}
+
+for int i in range(5, 0, -1) {
+    if i == 4 {
+        continue;
+    }
+    if i == 2 {
+        break;
+    }
+    print("Counting down: ", i);
+}
+
+make_dir("logs");
+write_file(path("logs", "one.log"), "x");
+write_file(path("logs", "two.log"), "x");
+let int logs = 0;
+for str file in files("logs", "*.log") {
+    logs = logs + 1;
+}
+print("Log files: ", logs);</pre>
+                    <pre class="code-block output-text">Try 1
+Try 2
+Try 3
+i = 0
+i = 3
+i = 6
+i = 9
+Counting down: 5
+Counting down: 3
+Log files: 2</pre>
+                </div>
+                <ul>
+                    <li><code>range(start, end)</code> counts from <code>start</code> up to but not including <code>end</code>. An optional third value is the step, which must be a written number other than 0, such as <code>2</code> or <code>-1</code>.</li>
+                    <li>The end of a range is worked out once, before the loop starts.</li>
+                    <li><code>files(...)</code> joins its values into a path, like <code>path()</code>, and gives each matching file in turn. The last part is a pattern where <code>*</code> and <code>?</code> are wildcards. Folders are skipped, and so are names starting with a dot unless the pattern starts with one.</li>
+                    <li>Wildcards only work when written directly into <code>files()</code>. A <code>*</code> or <code>?</code> in any other path is an error, and one held in a variable matches nothing.</li>
+                </ul>
+            </section>
+
+            <!-- Functions -->
+            <section class="docs-section" id="functions">
+                <p class="section-label">Language</p>
+                <h2>Functions</h2>
+                <p>Functions are declared with <code>fn</code>. Every parameter has a type. A function that gives back a value has its return type before its name.</p>
+                <div class="example">
+                    <pre class="code-block rosella-source">fn greet(str name, int times) {
+    for int i in range(0, times) {
+        print("Hi ", name);
+    }
+}
+
+fn int largest(int a, int b) {
+    if a &gt; b {
+        return a;
+    }
+    return b;
+}
+
+fn str describe(int n) {
+    if n &lt; 0 {
+        return "negative";
+    } else {
+        return "not negative";
+    }
+}
+
+greet("Sam", 2);
+print(largest(4, 9), " is ", describe(largest(4, 9)));</pre>
+                    <pre class="code-block output-text">Hi Sam
+Hi Sam
+9 is not negative</pre>
+                </div>
+                <ul>
+                    <li>A function with a return type must end with <code>return</code>, or return in both branches of a final <code>if</code> and <code>else</code>.</li>
+                    <li>Functions can be called before they are defined.</li>
+                    <li>Parameters belong to their function. Variables declared with <code>let</code> are shared by the whole script.</li>
+                    <li>A function cannot call itself, directly or through other functions, when compiling for Batch, because Batch variables have no call stack.</li>
+                </ul>
+            </section>
+
+            <!-- Text -->
+            <section class="docs-section" id="text">
+                <p class="section-label">Language</p>
+                <h2>Text</h2>
+                <p>Text is joined with <code>concat()</code>, or by giving <code>print()</code> several values.</p>
+                <div class="example">
+                    <pre class="code-block rosella-source">let str text = "Hello World";
+
+print(length(text));
+print(slice(text, 0, 5), "|", slice(text, 6, 100), "|", slice(text, -5, 3));
+print(replace(text, "o", "0"));
+print(upper(text), " ", lower(text));
+
+let str joined = concat(text, " has ", length(text), " characters");
+print(joined);
+
+if contains(text, "World") &amp;&amp; !contains(text, "world") {
+    print("contains() is case sensitive");
+}</pre>
+                    <pre class="code-block output-text">11
+Hello|World|Wor
+Hell0 W0rld
+HELLO WORLD hello world
+Hello World has 11 characters
+contains() is case sensitive</pre>
+                </div>
+                <ul>
+                    <li><code>slice(text, start, count)</code> takes <code>count</code> characters from <code>start</code>, which counts from 0. A negative start counts back from the end.</li>
+                    <li><code>replace()</code> and <code>contains()</code> match upper and lower case exactly.</li>
+                    <li><code>upper()</code> and <code>lower()</code> change the letters A to Z and leave others alone.</li>
+                </ul>
+            </section>
+
+            <!-- Files -->
+            <section class="docs-section" id="files">
+                <p class="section-label">Language</p>
+                <h2>Files and folders</h2>
+                <p>Functions that take a path accept several values and join them with the right separator for the target, so <code>path("logs", "today.txt")</code> becomes <code>logs\today.txt</code> on Windows and <code>logs/today.txt</code> on Linux. <code>/</code> and <code>\</code> inside the values are converted too.</p>
+                <div class="example">
+                    <pre class="code-block rosella-source">let str project = "demo";
+make_dir(project, "build", "out");
+
+write_file(path(project, "notes.txt"), "first line");
+append_file(path(project, "notes.txt"), "second line");
+copy(path(project, "notes.txt"), path(project, "build", "copy.txt"));
+move(path(project, "build", "copy.txt"), path(project, "moved.txt"));
+
+if is_dir(project, "build") &amp;&amp; is_file(project, "moved.txt") &amp;&amp; exists(project, "notes.txt") {
+    print("Folders and files are in place");
+}
+
+let str start = get_cwd();
+cd(project);
+if is_file("notes.txt") {
+    print("cd moved into the folder");
+}
+cd(start);
+
+remove(path(project, "moved.txt"));
+remove_dir(project, "build");
+remove_dir(project);
+if not_exists(project) {
+    print("Cleaned up");
+}</pre>
+                    <pre class="code-block output-text">Folders and files are in place
+cd moved into the folder
+Cleaned up</pre>
+                </div>
+                <ul>
+                    <li><code>make_dir()</code> creates every missing folder along the path.</li>
+                    <li><code>write_file()</code> replaces the file and <code>append_file()</code> adds to it. Each ends with a line break.</li>
+                    <li><code>remove()</code> only removes files and <code>remove_dir()</code> only removes folders, with everything inside them. Both do nothing if the path does not exist.</li>
+                    <li>If a variable in the path given to <code>remove()</code> or <code>remove_dir()</code> is empty, the script stops with exit code 1 instead of removing the wrong thing.</li>
+                    <li><code>copy()</code> copies files and skips folders. <code>move()</code> moves or renames both.</li>
+                    <li><code>get_cwd()</code> gives the current folder and <code>script_dir()</code> gives the folder the script is in.</li>
+                </ul>
+            </section>
+
+            <!-- Input -->
+            <section class="docs-section" id="input">
+                <p class="section-label">Language</p>
+                <h2>Input and environment</h2>
+                <div class="example">
+                    <pre class="code-block rosella-source">let str name = read("Name: ");
+print("Hi ", name);
+
+print("Arguments: ", arg_count());
+let int i = 1;
+while i &lt;= arg_count() {
+    print("Argument ", i, " is ", arg(i));
+    i = i + 1;
+}
+
+set_env("GREETING", "hello");
+print("GREETING is ", env("GREETING"));
+if env("ROSELLA_DOCS_UNSET") == "" {
+    print("An unset variable is empty");
+}</pre>
+                    <pre class="code-block output-text">Name: Hi Sam
+Arguments: 2
+Argument 1 is first
+Argument 2 is second one
+GREETING is hello
+An unset variable is empty</pre>
+                </div>
+                <p>That output comes from typing <code>Sam</code> and running the script with the arguments <code>first</code> and <code>"second one"</code>.</p>
+                <ul>
+                    <li><code>read(prompt)</code> shows the prompt and returns the line that was typed, keeping spaces at the start. It can also be used on its own, as <code>read("Press enter to continue");</code>.</li>
+                    <li><code>arg(n)</code> gives argument <code>n</code>, counting from 1. A missing argument is empty.</li>
+                    <li><code>env("NAME")</code> and <code>set_env("NAME", value)</code> read and change environment variables. The name must be written in quotes. Changes last until the script ends and are seen by programs it runs.</li>
+                </ul>
+            </section>
+
+            <!-- Programs -->
+            <section class="docs-section" id="programs">
+                <p class="section-label">Language</p>
+                <h2>Running programs</h2>
+                <div class="example">
+                    <pre class="code-block rosella-source">let int status = run("git", "--version");
+if status == 0 {
+    print("git is installed");
+}
+
+let str branch = run_output("git", "rev-parse", "--is-inside-work-tree");
+if branch != "true" {
+    print("Not inside a git repository");
+}
+
+let int dice = random(1, 6);
+if dice &gt;= 1 &amp;&amp; dice &lt;= 6 {
+    print("Rolled between 1 and 6");
+}
+
+sleep(1);
+print("Waited one second");
+exit(3);</pre>
+                    <pre class="code-block output-text">git version 2.39.1.windows.1
+git is installed
+Not inside a git repository
+Rolled between 1 and 6
+Waited one second</pre>
+                </div>
+                <ul>
+                    <li><code>run(program, arguments...)</code> runs a program, lets it print as normal, and gives back its exit code. It can also be used on its own.</li>
+                    <li><code>run_output(program, arguments...)</code> gives back the first line the program prints that has text in it.</li>
+                    <li>Arguments are passed exactly as written, including spaces, <code>%</code>, <code>!</code>, <code>^</code>, <code>&amp;</code> and a backslash at the end.</li>
+                    <li><code>random(min, max)</code> gives a number from <code>min</code> to <code>max</code>, including both.</li>
+                    <li><code>exit(code)</code> stops the script with that exit code, even from inside functions and loops. A script that ends without <code>exit()</code> exits with 0.</li>
+                </ul>
+            </section>
+
+            <!-- Platforms -->
+            <section class="docs-section" id="platforms">
+                <p class="section-label">Language</p>
+                <h2>Platforms and raw lines</h2>
+                <p>A <code>with windows</code> or <code>with linux</code> block is only kept when compiling for that target. A line starting with <code>|&gt;</code> is copied into the output exactly as written, up to its last semicolon, for anything Rosella does not cover.</p>
+                <div class="example">
+                    <pre class="code-block rosella-source">let str separator = "/";
+with windows {
+    separator = "\\";
+}
+print("This system separates folders with ", separator);
+print("path() picks the right one for you: ", path("a", "b"));
+
+with windows { |&gt; echo A raw shell line; }
+with linux { |&gt; echo A raw shell line; }
+
+if length(script_dir()) &gt; 0 {
+    print("The script knows its own folder");
+}</pre>
+                    <pre class="code-block output-text">This system separates folders with /
+path() picks the right one for you: a/b
+A raw shell line
+The script knows its own folder</pre>
+                </div>
+                <p>That output is from Linux. On Windows the first two lines show <code>\</code> and <code>a\b</code>.</p>
+                <div class="callout callout-warn">Rosella does not check raw lines. Keep them inside a <code>with</code> block for the shell they are written for.</div>
+            </section>
+
+            <!-- Built-ins -->
+            <section class="docs-section" id="builtins">
+                <p class="section-label">Reference</p>
+                <h2>Built-in functions</h2>
+                <div class="table-responsive">
+                    <table class="ref-table">
+                        <thead><tr><th>Function</th><th>Gives</th><th>Use</th></tr></thead>
+                        <tbody>
+                            <tr><td>print(values...)</td><td></td><td>Print the values on one line</td></tr>
+                            <tr><td>read(prompt)</td><td>str</td><td>Ask for a line of input</td></tr>
+                            <tr><td>arg(n)</td><td>str</td><td>Script argument <code>n</code>, from 1</td></tr>
+                            <tr><td>arg_count()</td><td>int</td><td>Number of script arguments</td></tr>
+                            <tr><td>env("NAME")</td><td>str</td><td>Read an environment variable</td></tr>
+                            <tr><td>set_env("NAME", value)</td><td></td><td>Set an environment variable</td></tr>
+                            <tr><td>number(text)</td><td>int</td><td>Text to number, 0 if it is not one</td></tr>
+                            <tr><td>is_number(text)</td><td>check</td><td>Whether text is a whole number</td></tr>
+                            <tr><td>length(text)</td><td>int</td><td>Number of characters</td></tr>
+                            <tr><td>slice(text, start, count)</td><td>str</td><td>Part of the text</td></tr>
+                            <tr><td>replace(text, from, to)</td><td>str</td><td>Replace every match</td></tr>
+                            <tr><td>upper(text), lower(text)</td><td>str</td><td>Change the case of A to Z</td></tr>
+                            <tr><td>concat(values...)</td><td>str</td><td>Join values into text</td></tr>
+                            <tr><td>contains(text, part)</td><td>check</td><td>Whether the text holds the part</td></tr>
+                            <tr><td>path(parts...)</td><td>str</td><td>Join parts into a path</td></tr>
+                            <tr><td>get_cwd()</td><td>str</td><td>The current folder</td></tr>
+                            <tr><td>script_dir()</td><td>str</td><td>The folder the script is in</td></tr>
+                            <tr><td>cd(parts...)</td><td></td><td>Change the current folder</td></tr>
+                            <tr><td>make_dir(parts...)</td><td></td><td>Create a folder and any missing parents</td></tr>
+                            <tr><td>remove(parts...)</td><td></td><td>Remove a file</td></tr>
+                            <tr><td>remove_dir(parts...)</td><td></td><td>Remove a folder and its contents</td></tr>
+                            <tr><td>copy(from, to)</td><td></td><td>Copy a file</td></tr>
+                            <tr><td>move(from, to)</td><td></td><td>Move or rename</td></tr>
+                            <tr><td>write_file(path, text)</td><td></td><td>Replace a file's contents</td></tr>
+                            <tr><td>append_file(path, text)</td><td></td><td>Add to the end of a file</td></tr>
+                            <tr><td>exists(parts...)</td><td>check</td><td>Whether the path exists</td></tr>
+                            <tr><td>not_exists(parts...)</td><td>check</td><td>Whether the path does not exist</td></tr>
+                            <tr><td>is_file(parts...)</td><td>check</td><td>Whether the path is a file</td></tr>
+                            <tr><td>is_dir(parts...)</td><td>check</td><td>Whether the path is a folder</td></tr>
+                            <tr><td>files(parts...)</td><td>str</td><td>Matching files, only in a <code>for</code> loop</td></tr>
+                            <tr><td>range(start, end, step)</td><td>int</td><td>Numbers, only in a <code>for</code> loop</td></tr>
+                            <tr><td>run(program, args...)</td><td>int</td><td>Run a program, give its exit code</td></tr>
+                            <tr><td>run_output(program, args...)</td><td>str</td><td>Run a program, give its first line</td></tr>
+                            <tr><td>random(min, max)</td><td>int</td><td>A random number in the range</td></tr>
+                            <tr><td>sleep(seconds)</td><td></td><td>Wait</td></tr>
+                            <tr><td>exit(code)</td><td></td><td>Stop the script</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>A check can only be used in an <code>if</code> or <code>while</code> condition.</p>
+            </section>
+
+            <!-- Names -->
+            <section class="docs-section" id="names">
+                <p class="section-label">Reference</p>
+                <h2>Names you cannot use</h2>
+                <p>Some names would break one of the two shells, so the compiler rejects them with a message saying why:</p>
+                <ul>
+                    <li>Names starting with <code>rosella_</code>, which the compiler uses itself.</li>
+                    <li>Names of built-in functions, for your own functions.</li>
+                    <li>Shell commands the generated scripts rely on, such as <code>mkdir</code>, <code>printf</code>, <code>read</code>, <code>cd</code> or <code>coproc</code>, for your own functions.</li>
+                    <li>Shell variables, such as <code>PATH</code>, <code>HOME</code>, <code>GROUPS</code> or <code>TEMP</code>, for your variables.</li>
+                    <li>Two names that only differ by upper and lower case, such as <code>count</code> and <code>Count</code>, because Batch treats them as the same.</li>
+                </ul>
+            </section>
+
+            <!-- Differences -->
+            <section class="docs-section" id="differences">
+                <p class="section-label">Reference</p>
+                <h2>Batch and Bash differences</h2>
+                <p>The Batch and Bash output of a script print the same text and exit with the same code. These are the known exceptions, each checked by running both shells:</p>
+                <div class="table-responsive">
+                    <table class="ref-table">
+                        <thead><tr><th>Situation</th><th>Bash</th><th>Batch</th></tr></thead>
+                        <tbody>
+                            <tr><td>run() of a missing program</td><td>Gives 127</td><td>Gives 1</td></tr>
+                            <tr><td>A " in a value passed to run()</td><td>The program gets it</td><td>The quotes are dropped</td></tr>
+                            <tr><td>Numbers past 32 bits</td><td>Keep growing</td><td>Wrap around</td></tr>
+                            <tr><td>&lt; and &gt; on numbers over 2.1 billion apart</td><td>Correct</td><td>Can give the wrong answer</td></tr>
+                            <tr><td>&lt; and &gt; on text that differs in case</td><td>"B" &lt; "a"</td><td>"a" &lt; "B"</td></tr>
+                            <tr><td>length() and slice() with letters like é</td><td>Count characters on Linux</td><td>Count bytes</td></tr>
+                            <tr><td>slice() starting before the text</td><td>Gives nothing</td><td>Starts at the first character</td></tr>
+                            <tr><td>exit() outside 0 to 255</td><td>Wraps, so 300 becomes 44</td><td>Keeps the number</td></tr>
+                            <tr><td>Files written by write_file()</td><td>Unix line endings</td><td>Windows line endings</td></tr>
+                            <tr><td>Several lines piped into read()</td><td>Each read() gets the next line</td><td>Only the first line arrives</td></tr>
+                            <tr><td>make_dir() with * or ? in a variable</td><td>Creates that name on Linux</td><td>Fails, Windows forbids it</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p>Checking a <code>run()</code> result with <code>!= 0</code>, keeping <code>exit()</code> codes between 0 and 255, and comparing text with matching case all work the same in both. Typing at the keyboard and redirecting a file into a script with <code>&lt;</code> both work with several <code>read()</code> calls in Batch.</p>
+            </section>
+
+        </main>
+    </div>
+</div>
+
+<footer>
+    <div class="container">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <span>Rosella - built by <a href="https://github.com/eande171">Eden Anderson</a>. Licensed under Apache 2.0.</span>
+            <span>
+                <a href="https://github.com/eande171/rosella">GitHub</a>
+                &nbsp;·&nbsp;
+                <a href="../demo/index.html">Playground</a>
+                &nbsp;·&nbsp;
+                <a href="https://ko-fi.com/eande171">Support Me</a>
+            </span>
+        </div>
+    </div>
+</footer>
+
+<script type="module">
+    import { loadCompiler } from "../compiler.js";
+    import { highlight } from "../highlight.js";
+
+    // Example Tabs
+    const examples = [...document.querySelectorAll(".example")];
+    const panels = [];
+    examples.forEach((example) => {
+        const source = example.querySelector(".rosella-source");
+        const output = example.querySelector(".output-text");
+        const tabs = document.createElement("div");
+        tabs.className = "code-tabs";
+        const views = [["Rosella", source], ["Batch", null], ["Bash", null], ["Output", output]];
+
+        views.forEach(([label, existing], index) => {
+            const panel = existing ?? document.createElement("pre");
+            if (!existing) {
+                panel.className = "code-block";
+                panel.textContent = "Loading the compiler...";
+                panels.push({ panel, source: source.textContent, shell: label.toLowerCase() });
+                example.appendChild(panel);
+            }
+            panel.hidden = index !== 0;
+
+            const tab = document.createElement("button");
+            tab.className = "code-tab" + (index === 0 ? " active" : "");
+            tab.textContent = label;
+            tab.addEventListener("click", () => {
+                tabs.querySelectorAll(".code-tab").forEach((other) => other.classList.toggle("active", other === tab));
+                example.querySelectorAll("pre").forEach((other) => { other.hidden = other !== panel; });
+            });
+            tabs.appendChild(tab);
+        });
+        example.prepend(tabs);
+        highlight(source, source.textContent, "rosella");
+    });
+
+    loadCompiler("../rosella.wasm")
+        .then((compiler) => panels.forEach(({ panel, source, shell }) => {
+            highlight(panel, compiler.compile(source, shell).text, shell);
+        }))
+        .catch(() => panels.forEach(({ panel }) => {
+            panel.textContent = "The compiler could not be loaded in this browser.";
+        }));
+
+    // Sidebar Highlight
+    const links = document.querySelectorAll(".sidebar-link");
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            links.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === `#${entry.target.id}`));
+        });
+    }, { rootMargin: "-20% 0px -70% 0px" });
+    document.querySelectorAll(".docs-section").forEach((section) => observer.observe(section));
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
