@@ -59,32 +59,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           path: packages
           merge-multiple: true
 
-      # Changelog Section
-      - name: Release notes
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          awk -v heading="## ${version}" '
-            $0 == heading { found = 1; next }
-            found && /^## / { exit }
-            found { print }
-          ' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then
-            echo "CHANGELOG.md has no section headed '## ${version}'" >&2
-            exit 1
-          fi
-
+      # Notes By Hand
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" packages/*.zip \
+            --repo "$GITHUB_REPOSITORY" \
             --draft \
             --title "$GITHUB_REF_NAME" \
-            --notes-file notes.md
+            --notes ""
